@@ -1,5 +1,11 @@
 {
-  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.typeCheckingMode": "off",
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportUnresolvedImport": "none",
+    "reportMissingModuleSource": "none",
+    "reportMissingImports": "none"
+  },
+  "python.linting.enabled": false,
   "python.linting.pylintEnabled": false,
   "python.linting.pycodestyleEnabled": false,
   "python.formatting.provider": "black",
