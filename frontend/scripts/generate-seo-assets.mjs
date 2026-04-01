@@ -10,6 +10,7 @@ const routes = [
   '/ai-operations-dashboard',
   '/ai-workflow-automation-use-cases',
   '/ai-agent-monitoring-checklist',
+  '/platform-ops',
 ]
 
 const publicDir = resolve(process.cwd(), 'public')

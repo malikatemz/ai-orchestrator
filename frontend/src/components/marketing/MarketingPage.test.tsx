@@ -25,8 +25,8 @@ describe('MarketingPage', () => {
   it('renders route navigation links in the shared marketing layout', () => {
     render(<MarketingPage content={marketingPages.operations} />)
 
-    expect(screen.getByText('Platform Home')).toBeTruthy()
-    expect(screen.getByText('Workflow Orchestration')).toBeTruthy()
-    expect(screen.getByText('AI Operations Dashboard')).toBeTruthy()
+    expect(screen.getAllByRole('link', { name: /Platform Home/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /Workflow Orchestration/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /AI Operations Dashboard/ }).length).toBeGreaterThan(0)
   })
 })

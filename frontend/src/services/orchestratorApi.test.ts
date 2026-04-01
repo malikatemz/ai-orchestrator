@@ -113,9 +113,9 @@ describe('orchestratorApi', () => {
   it('wraps terminal network failures into typed client errors after retries', async () => {
     const fetchMock = vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network unavailable'))
 
-    const request = orchestratorApi.getOverview()
+    const request = orchestratorApi.getOverview().catch((caughtError) => caughtError)
     await vi.runAllTimersAsync()
-    const error = await request.catch((caughtError) => caughtError)
+    const error = await request
 
     expect(fetchMock).toHaveBeenCalledTimes(4)
     expect(error).toBeInstanceOf(ApiClientError)

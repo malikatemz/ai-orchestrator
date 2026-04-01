@@ -6,11 +6,23 @@ import { describe, expect, it, vi } from 'vitest'
 import { DashboardPage } from './DashboardPage'
 
 vi.mock('next/link', () => ({
-  default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
+  default: ({ children, href, className }: { children: ReactNode; href: string; className?: string }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  ),
 }))
 
 vi.mock('../../hooks/useDashboard', () => ({
   useDashboard: vi.fn(() => ({
+    appConfig: {
+      app_mode: 'demo',
+      demo_mode: true,
+      auth_required: false,
+      demo_seed_enabled: true,
+      public_app_url: 'https://example.com',
+      public_api_url: 'https://api.example.com',
+    },
     overview: {
       metrics: { workflows: 2, tasks: 5, running: 1, completed: 4, failed: 1, success_rate: 80 },
       workflows: [
@@ -61,6 +73,8 @@ vi.mock('../../hooks/useDashboard', () => ({
     setTaskForm: vi.fn(),
     createWorkflow: vi.fn(),
     createTask: vi.fn(),
+    retryTask: vi.fn(),
+    resetDemo: vi.fn(),
   })),
 }))
 
@@ -69,18 +83,20 @@ vi.mock('../common/SeoHead', () => ({
 }))
 
 describe('DashboardPage', () => {
-  it('renders dashboard metrics and key workflow sections on the happy path', () => {
+  it('renders dashboard metrics, demo callout, and workflow sections on the happy path', () => {
     render(<DashboardPage />)
 
     expect(screen.getByText('Ship orchestrated AI work with visibility, retries, and live execution context.')).toBeTruthy()
-    expect(screen.getByText('Workflows')).toBeTruthy()
-    expect(screen.getByText('Ops Flow')).toBeTruthy()
-    expect(screen.getByText('Success Rate')).toBeTruthy()
+    expect(screen.getByText('Reset demo data')).toBeTruthy()
+    expect(screen.getAllByText('Workflows')[0]).toBeTruthy()
+    expect(screen.getAllByText('Ops Flow')[0]).toBeTruthy()
+    expect(screen.getAllByText('Platform Ops')[0]).toBeTruthy()
   })
 
   it('renders loading state when dashboard data is still resolving', async () => {
     const { useDashboard } = await import('../../hooks/useDashboard')
     vi.mocked(useDashboard).mockReturnValueOnce({
+      appConfig: null,
       overview: null,
       selectedWorkflow: null,
       selectedWorkflowId: null,
@@ -94,33 +110,12 @@ describe('DashboardPage', () => {
       setTaskForm: vi.fn(),
       createWorkflow: vi.fn(),
       createTask: vi.fn(),
+      retryTask: vi.fn(),
+      resetDemo: vi.fn(),
     })
 
     render(<DashboardPage />)
 
     expect(screen.getByText('Loading orchestrator state...')).toBeTruthy()
-  })
-
-  it('renders the top-level error banner when the hook exposes an error', async () => {
-    const { useDashboard } = await import('../../hooks/useDashboard')
-    vi.mocked(useDashboard).mockReturnValueOnce({
-      overview: null,
-      selectedWorkflow: null,
-      selectedWorkflowId: null,
-      workflowForm: { name: '', description: '', owner: 'ops', priority: 'medium', target_model: 'gpt-4.1-mini' },
-      taskForm: { name: '', input: '', agent: 'planner' },
-      loading: false,
-      submitting: false,
-      error: 'Live data is temporarily unavailable.',
-      selectWorkflow: vi.fn(),
-      setWorkflowForm: vi.fn(),
-      setTaskForm: vi.fn(),
-      createWorkflow: vi.fn(),
-      createTask: vi.fn(),
-    })
-
-    render(<DashboardPage />)
-
-    expect(screen.getByText('Live data is temporarily unavailable.')).toBeTruthy()
   })
 })

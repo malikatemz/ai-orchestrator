@@ -1,3 +1,4 @@
+import React from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 
 import { formatDate } from '../../lib/format'

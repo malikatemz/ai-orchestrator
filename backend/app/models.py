@@ -90,3 +90,6 @@ def init_db(engine_override=None):
     from .database import init_db as database_init_db
 
     return database_init_db(engine_override)
+
+
+from .database import SessionLocal, engine  # noqa: E402  # compatibility exports for tests

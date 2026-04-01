@@ -22,6 +22,9 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             )
         return {"sub": "admin", "scopes": ["orchestrator:access", "orchestrator:admin"]}
 
+    if credentials and not hasattr(credentials, "scheme"):
+        credentials = None
+
     if not credentials or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid auth token")
 

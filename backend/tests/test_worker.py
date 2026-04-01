@@ -77,7 +77,7 @@ def test_queue_task_falls_back_to_inline_execution(tmp_path, monkeypatch):
     task_id = task.id
     db.close()
 
-    monkeypatch.setattr(worker.run_task, "delay", lambda task_id: (_ for _ in ()).throw(RuntimeError("queue offline")))
+    monkeypatch.setattr(worker.run_task, "apply_async", lambda args, queue: (_ for _ in ()).throw(RuntimeError("queue offline")))
 
     queue_mode = worker.queue_task(task_id)
 
