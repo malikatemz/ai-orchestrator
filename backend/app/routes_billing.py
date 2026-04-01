@@ -16,7 +16,7 @@ from ..billing import (
 )
 from ..models import Organization, UserRole
 from ..schemas import CheckoutSessionRequest, CheckoutSessionResponse, UsageResponse
-from .auth import get_current_user
+from .api_auth import get_current_user
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
