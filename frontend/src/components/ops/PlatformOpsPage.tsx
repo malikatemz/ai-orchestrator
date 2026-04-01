@@ -47,6 +47,7 @@ export function PlatformOpsPage() {
         title="AI Orchestrator Platform Ops"
         description="Operational metrics, audit logs, failure hotspots, and execution lane visibility for AI Orchestrator."
         path="/platform-ops"
+        noindex
       />
 
       <main className="marketing-shell">

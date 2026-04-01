@@ -2,7 +2,7 @@ import React, { type PropsWithChildren } from 'react'
 import Link from 'next/link'
 
 import { SeoHead } from '../common/SeoHead'
-import { coreRoutes } from '../../lib/routes'
+import { marketingRoutes } from '../../lib/routes'
 
 interface MarketingLayoutBaseProps {
   title: string
@@ -26,7 +26,7 @@ export function MarketingLayout({ title, description, path, eyebrow, heading, in
             AI Orchestrator
           </Link>
           <nav className="top-links" aria-label="Primary">
-            {coreRoutes.map((route) => (
+            {marketingRoutes.map((route) => (
               <Link key={route.href} href={route.href}>
                 {route.label}
               </Link>
@@ -45,7 +45,7 @@ export function MarketingLayout({ title, description, path, eyebrow, heading, in
         <footer className="panel marketing-footer">
           <h2>Explore the platform</h2>
           <div className="route-grid">
-            {coreRoutes.map((route) => (
+            {marketingRoutes.map((route) => (
               <Link key={route.href} href={route.href} className="route-card">
                 <strong>{route.label}</strong>
                 <span>{route.description}</span>

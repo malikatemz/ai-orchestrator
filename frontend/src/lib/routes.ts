@@ -4,7 +4,7 @@ export interface RouteDefinition {
   description: string
 }
 
-export const coreRoutes: RouteDefinition[] = [
+export const marketingRoutes: RouteDefinition[] = [
   {
     href: '/',
     label: 'Platform Home',
@@ -34,10 +34,16 @@ export const coreRoutes: RouteDefinition[] = [
     href: '/ai-agent-monitoring-checklist',
     label: 'Agent Monitoring Checklist',
     description: 'A practical checklist for monitoring AI agents, task reliability, and production operations.'
-  },
+  }
+]
+
+export const appRoutes: RouteDefinition[] = [
   {
     href: '/platform-ops',
     label: 'Platform Ops',
     description: 'Operational metrics, audit logs, queue lanes, and failure hotspots across the orchestrator.'
   }
 ]
+
+export const coreRoutes: RouteDefinition[] = [...marketingRoutes, ...appRoutes]
+export const crawlableRoutes: RouteDefinition[] = [...marketingRoutes]
