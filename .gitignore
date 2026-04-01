@@ -23,4 +23,10 @@ coverage.xml
 node_modules/
 .next/
 .env
+.env.production
+.env.local
+frontend/.env.local
+frontend/.next/
+backend/.pytest_cache/
+alembic/versions/__pycache__/
 .DS_Store

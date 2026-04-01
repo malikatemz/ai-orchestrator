@@ -34,5 +34,10 @@ export const coreRoutes: RouteDefinition[] = [
     href: '/ai-agent-monitoring-checklist',
     label: 'Agent Monitoring Checklist',
     description: 'A practical checklist for monitoring AI agents, task reliability, and production operations.'
+  },
+  {
+    href: '/platform-ops',
+    label: 'Platform Ops',
+    description: 'Operational metrics, audit logs, queue lanes, and failure hotspots across the orchestrator.'
   }
 ]

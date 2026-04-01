@@ -24,7 +24,7 @@ class TestGetCurrentUser:
         payload = auth.get_current_user(Credentials("Bearer", "secret-token"))
 
         assert payload["sub"] == "service-user"
-        assert payload["scopes"] == ["orchestrator:access"]
+        assert payload["scopes"] == ["orchestrator:access", "orchestrator:admin"]
 
     def test_it_rejects_missing_credentials_when_auth_is_enabled(self, monkeypatch):
         monkeypatch.setattr(auth.settings, "api_token", "secret-token")

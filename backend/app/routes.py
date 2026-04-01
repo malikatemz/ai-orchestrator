@@ -23,6 +23,7 @@ from .services import (
     get_accessible_workflows,
     get_ops_metrics,
     get_overview,
+    is_admin,
     record_audit_event,
     retry_task,
     seed_demo_data,
@@ -85,7 +86,7 @@ async def workflow_detail(workflow_id: int, current_user=Depends(get_current_use
 @router.post("/workflows", response_model=schemas.WorkflowSummary, status_code=201)
 async def create_workflow_v1(workflow: schemas.WorkflowCreate, request: Request, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
     payload = model_to_dict(workflow)
-    payload["owner"] = current_user["sub"]
+    payload["owner"] = payload["owner"] if can_manage_demo(current_user) or is_admin(current_user) else current_user["sub"]
     created = create_workflow(db, payload)
     record_audit_event(
         db,

@@ -9,6 +9,9 @@ describe('coreRoutes', () => {
       '/ai-workflow-orchestration',
       '/multi-agent-orchestration',
       '/ai-operations-dashboard',
+      '/ai-workflow-automation-use-cases',
+      '/ai-agent-monitoring-checklist',
+      '/platform-ops',
     ])
   })
 
