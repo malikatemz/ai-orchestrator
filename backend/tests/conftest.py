@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.auth import get_current_user
+from app.api_auth import get_current_user
 from app.config import AppMode, settings
 from app.database import build_engine, build_session, get_db, init_db
 

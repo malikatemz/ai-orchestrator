@@ -1,0 +1,86 @@
+---
+# Kubernetes Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: orchestrator-prod
+  labels:
+    name: orchestrator-prod
+
+---
+# Service Account for API
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orchestrator-api
+  namespace: orchestrator-prod
+
+---
+# Service Account for Worker
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orchestrator-worker
+  namespace: orchestrator-prod
+
+---
+# Role for API (read config, write audit logs)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: orchestrator-api-role
+  namespace: orchestrator-prod
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+
+---
+# RoleBinding for API
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: orchestrator-api-binding
+  namespace: orchestrator-prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: orchestrator-api-role
+subjects:
+  - kind: ServiceAccount
+    name: orchestrator-api
+    namespace: orchestrator-prod
+
+---
+# Role for Worker (read config)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: orchestrator-worker-role
+  namespace: orchestrator-prod
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+
+---
+# RoleBinding for Worker
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: orchestrator-worker-binding
+  namespace: orchestrator-prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: orchestrator-worker-role
+subjects:
+  - kind: ServiceAccount
+    name: orchestrator-worker
+    namespace: orchestrator-prod

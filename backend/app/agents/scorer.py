@@ -4,9 +4,10 @@ from typing import List, Dict, Optional
 from statistics import mean
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from ..models import AgentStats
+from ..time_utils import utc_now
 from .registry import AgentProvider, list_providers_for_task_type
 
 
@@ -27,7 +28,7 @@ def get_provider_stats(
         "total_tasks": 100,
       }
     """
-    cutoff_date = datetime.utcnow() - timedelta(days=lookback_days)
+    cutoff_date = utc_now() - timedelta(days=lookback_days)
     
     stats = db.query(AgentStats).filter(
         AgentStats.provider_id == provider_id,

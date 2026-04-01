@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import Field
-
 try:
-    from pydantic_settings import BaseSettings
+    from pydantic_settings import BaseSettings, SettingsConfigDict
 except ImportError:  # pragma: no cover - Pydantic v1 fallback
     from pydantic import BaseSettings
+    SettingsConfigDict = None
 
 
 class AppMode(str, Enum):
@@ -31,9 +30,12 @@ class Settings(BaseSettings):
     public_app_url: str = "http://localhost:3000"
     public_api_url: str = "http://localhost:8000"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    if SettingsConfigDict is not None:
+        model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    else:  # pragma: no cover - Pydantic v1 fallback
+        class Config:
+            env_file = ".env"
+            env_file_encoding = "utf-8"
 
     @property
     def allowed_origins_list(self) -> list[str]:

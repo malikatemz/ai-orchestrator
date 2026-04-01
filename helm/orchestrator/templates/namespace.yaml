@@ -1,0 +1,9 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace.name }}
+{{- if .Values.namespace.create }}
+---
+{{ end }}

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from . import schemas
-from .auth import get_current_user
+from .api_auth import get_current_user
 from .database import get_db
 from .error_handling import ApiError, ErrorCode, ErrorSeverity
 from .observability import configure_logging, log_event
@@ -30,6 +29,7 @@ from .services import (
     validate_task_exists,
     validate_workflow_exists,
 )
+from .time_utils import utc_now
 from .worker import queue_task
 
 logger = configure_logging()
@@ -51,7 +51,7 @@ async def root():
 
 @router.get("/health", response_model=schemas.HealthResponse)
 async def health():
-    return schemas.HealthResponse(status="ok", database="connected", queue_mode="celery-with-inline-fallback", timestamp=datetime.utcnow())
+    return schemas.HealthResponse(status="ok", database="connected", queue_mode="celery-with-inline-fallback", timestamp=utc_now())
 
 
 @router.get("/app-config", response_model=schemas.AppConfigResponse)

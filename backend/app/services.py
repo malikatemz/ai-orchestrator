@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from statistics import mean
 from typing import Any, Dict, List
 
@@ -9,6 +8,7 @@ from sqlalchemy.orm import Session
 from . import models, repositories
 from .config import settings
 from .error_handling import ApiError, ErrorCode, ErrorSeverity
+from .time_utils import utc_now
 
 SYSTEM_ACTOR = "system"
 DEMO_ACTOR = "demo-guest"
@@ -251,7 +251,7 @@ def create_demo_workflows(db: Session) -> List[models.Workflow]:
 
 
 def create_demo_tasks(db: Session, workflows: List[models.Workflow]) -> None:
-    now = datetime.utcnow()
+    now = utc_now()
     tasks = [
         models.Task(
             workflow_id=workflows[0].id,

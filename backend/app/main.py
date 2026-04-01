@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import uuid
 
 import sentry_sdk
@@ -19,7 +20,26 @@ from .services import seed_demo_data
 initialize_sentry()
 logger = configure_logging()
 
-app = FastAPI(title=settings.app_name, version="1.1.0")
+def run_startup_tasks() -> None:
+    settings.validate_runtime()
+    if settings.should_auto_init_db:
+        init_db()
+
+    if settings.should_auto_seed_demo:
+        db = SessionLocal()
+        try:
+            seed_demo_data(db, force=False, actor="system")
+        finally:
+            db.close()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    run_startup_tasks()
+    yield
+
+
+app = FastAPI(title=settings.app_name, version="1.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -86,18 +106,8 @@ async def handle_unexpected_error(request: Request, exc: Exception):
     return await handle_api_error(request, error)
 
 
-@app.on_event("startup")
-def on_startup():
-    settings.validate_runtime()
-    if settings.should_auto_init_db:
-        init_db()
-
-    if settings.should_auto_seed_demo:
-        db = SessionLocal()
-        try:
-            seed_demo_data(db, force=False, actor="system")
-        finally:
-            db.close()
+def on_startup() -> None:
+    run_startup_tasks()
 
 
 app.include_router(router)

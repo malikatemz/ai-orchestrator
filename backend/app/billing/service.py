@@ -2,13 +2,14 @@
 
 import stripe
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from ..config import get_settings
 from ..models import Organization, UsageRecord
+from ..time_utils import utc_now
 from .models import SubscriptionPlan, get_plan_info
 
 logger = logging.getLogger(__name__)
@@ -203,7 +204,7 @@ def report_usage(
         record = stripe.subscriptionItems.createUsageRecord(
             stripe_subscription_item_id,
             quantity=quantity,
-            timestamp=int(datetime.utcnow().timestamp()),
+            timestamp=int(utc_now().timestamp()),
         )
         logger.debug(f"Reported usage for org {org_id}: {quantity} tasks")
         return record.get("id")
@@ -234,7 +235,7 @@ def get_usage_for_period(
         "renewal_date": datetime,
       }
     """
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utc_now() - timedelta(days=days)
     
     # Count completed tasks in period
     tasks_used = db.query(func.count(UsageRecord.id)).filter(
@@ -250,7 +251,7 @@ def get_usage_for_period(
     plan = SubscriptionPlan(org.subscription_plan) if org.subscription_plan else SubscriptionPlan.STARTER
     plan_info = get_plan_info(plan)
     
-    billing_period_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    billing_period_start = utc_now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     billing_period_end = (billing_period_start + timedelta(days=32)).replace(day=1) - timedelta(seconds=1)
     renewal_date = billing_period_end + timedelta(seconds=1)
     

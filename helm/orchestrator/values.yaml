@@ -1,0 +1,133 @@
+# Orchestrator Helm Chart Values
+# Override with: helm install orchestrator ./helm/orchestrator -f custom-values.yaml
+
+# Global settings
+global:
+  domain: example.com
+  appDomain: "app.{DOMAIN}"
+  apiDomain: "api.{DOMAIN}"
+  acmeEmail: "ops@{DOMAIN}"
+
+# Namespace
+namespace:
+  create: true
+  name: orchestrator-prod
+
+# Images
+images:
+  registry: ghcr.io
+  org: {ORG}
+  api:
+    repository: orchestrator-api
+    tag: latest
+    pullPolicy: Always
+  worker:
+    repository: orchestrator-worker
+    tag: latest
+    pullPolicy: Always
+  frontend:
+    repository: orchestrator-frontend
+    tag: latest
+    pullPolicy: Always
+
+# Replicas
+api:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+worker:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+  celeryQueues: "high_priority,default,low_cost"
+  celeryConc currenty: 4
+
+frontend:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Autoscaling
+autoscaling:
+  api:
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPU: 60
+  worker:
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPU: 70
+    enableKEDA: true
+    keQueueDepth: 50
+  frontend:
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPU: 70
+
+# Database
+postgres:
+  enabled: true
+  replicas: 1
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Redis
+redis:
+  enabled: true
+  replicas: 1
+  storage: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Ingress
+ingress:
+  enabled: true
+  className: nginx
+  tlsEnabled: true
+  certManager: true
+  letsencrypt: true
+
+# Secrets (from sealed-secrets or external)
+secrets:
+  create: true
+  useSealed: false  # Set to true for production with sealed-secrets
+  externalSecretName: ""  # Or reference external secret
+
+# Monitoring
+monitoring:
+  enabled: false
+  prometheusRule: false
+  serviceMonitor: false
+
+# Logging
+logging:
+  level: info
+  sslCertPath: /etc/tls/certs/tls.crt
+  sslKeyPath: /etc/tls/certs/tls.key

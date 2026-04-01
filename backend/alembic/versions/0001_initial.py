@@ -24,7 +24,7 @@ def upgrade() -> None:
         sa.Column("resource_type", sa.String(), nullable=False),
         sa.Column("resource_id", sa.Integer(), nullable=True),
         sa.Column("details_json", sa.Text(), nullable=False, server_default="{}"),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_audit_logs_created_at"), "audit_logs", ["created_at"], unique=False)
@@ -42,9 +42,9 @@ def upgrade() -> None:
         sa.Column("status", sa.String(), nullable=False),
         sa.Column("priority", sa.String(), nullable=False),
         sa.Column("target_model", sa.String(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.Column("last_run_at", sa.DateTime(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("last_run_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_workflows_id"), "workflows", ["id"], unique=False)
@@ -65,10 +65,10 @@ def upgrade() -> None:
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("retries", sa.Integer(), nullable=False),
         sa.Column("duration_seconds", sa.Float(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("started_at", sa.DateTime(), nullable=True),
-        sa.Column("completed_at", sa.DateTime(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["source_task_id"], ["tasks.id"]),
         sa.ForeignKeyConstraint(["workflow_id"], ["workflows.id"]),
         sa.PrimaryKeyConstraint("id"),
