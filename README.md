@@ -1,51 +1,79 @@
-# AI Orchestrator MVP
+# AI Orchestrator
 
-A control layer for AI workflows that prevents failures, adds visibility, and coordinates multiple agents.
+An orchestration control plane for AI workflows with a FastAPI backend, Celery worker, Redis queue, PostgreSQL database, and a Next.js dashboard for live oversight.
 
-## Setup
+## What is included
 
-1. Install Docker and Docker Compose.
+- Typed workflow and task APIs with validation
+- Overview and health endpoints for system monitoring
+- Seeded demo workflows so the dashboard is useful on first boot
+- Task execution lifecycle with inline fallback when Celery is unavailable
+- A dashboard for workflow creation, queue monitoring, and execution detail
 
-2. Clone or navigate to the project directory.
+## Run with Docker
 
-3. Run `docker-compose up --build` to start all services.
+1. Install Docker Desktop.
+2. From the project root, run:
 
-4. Access the frontend at http://localhost:3000
+```bash
+docker-compose up --build
+```
 
-5. Backend API at http://localhost:8000
+3. Open the apps:
 
-## Services
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- API docs: http://localhost:8000/docs
 
-- **Frontend**: Next.js dashboard
-- **Backend**: FastAPI API
-- **Worker**: Celery for async tasks
-- **Redis**: Queue
-- **PostgreSQL**: Database
+## Run locally
 
-## Development
+### Backend API
 
-To run locally without Docker:
-
-### Backend
 ```bash
 cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
+The backend defaults to a local SQLite database when `DATABASE_URL` is not set, so it can run without PostgreSQL for quick development.
 
 ### Worker
+
 ```bash
 cd backend
 celery -A app.worker worker --loglevel=info
 ```
 
-## Deployment
+If Redis or Celery is not available, task creation still works because the API falls back to inline execution.
 
-Deploy to Railway, Render, or similar for backend/DB/Redis, and Vercel for frontend.
+### Frontend
+
+```bash
+cd frontend
+copy .env.example .env.local
+npm install
+npm run dev
+```
+
+Set `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local` if your API is not running on `http://localhost:8000`.
+
+## Key API endpoints
+
+- `GET /health`: service health and queue mode
+- `GET /overview`: dashboard metrics, workflow summaries, and recent activity
+- `GET /workflows`: all workflows
+- `GET /workflows/{id}`: workflow detail with tasks
+- `POST /workflows`: create a workflow
+- `POST /workflows/{id}/tasks`: dispatch a task
+
+## Project structure
+
+- `backend/`: FastAPI app, SQLAlchemy models, and Celery worker
+- `frontend/`: Next.js dashboard
+- `docker-compose.yml`: local full-system stack
+
+## Next improvements
+
+- Plug real model providers into `backend/app/worker.py`
+- Add authentication and per-team tenancy
+- Add test coverage for API endpoints and task execution

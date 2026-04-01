@@ -1,56 +1,98 @@
-from fastapi import FastAPI, Depends
+import uuid
+
+import sentry_sdk
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from . import models
-from .models import SessionLocal
-from .worker import run_task
+from fastapi.responses import JSONResponse
 
-app = FastAPI(title="AI Orchestrator", version="1.0.0")
+from .auth import get_current_user
+from .config import settings
+from .database import init_db
+from .error_handling import ApiError, ErrorCode, ErrorSeverity
+from .observability import configure_logging, initialize_sentry
+from .rate_limiter import maybe_rate_limit
+from .routes import router
 
-# CORS for frontend
+initialize_sentry()
+logger = configure_logging()
+
+app = FastAPI(title=settings.app_name, version="1.0.0")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify frontend URL
+    allow_origins=settings.allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
-@app.get("/")
-async def root():
-    return {"message": "AI Orchestrator API"}
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    """Add request ID and apply rate limiting."""
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    request.state.request_id = request_id
+    maybe_rate_limit(request)
+    response = await call_next(request)
+    response.headers["x-request-id"] = request_id
+    return response
 
-@app.get("/workflows")
-async def get_workflows(db: Session = Depends(get_db)):
-    workflows = db.query(models.Workflow).all()
-    return {"workflows": [{"id": w.id, "name": w.name, "description": w.description} for w in workflows]}
 
-@app.post("/workflows")
-async def create_workflow(workflow: dict, db: Session = Depends(get_db)):
-    new_workflow = models.Workflow(name=workflow.get("name"), description=workflow.get("description"))
-    db.add(new_workflow)
-    db.commit()
-    db.refresh(new_workflow)
-    return {"id": new_workflow.id, "status": "created"}
+@app.exception_handler(ApiError)
+async def handle_api_error(request: Request, exc: ApiError):
+    """Handle custom API errors."""
+    payload = exc.as_payload()
+    payload["request_id"] = request.state.request_id
+    return JSONResponse(status_code=exc.status_code, content=payload)
 
-@app.get("/workflows/{workflow_id}/tasks")
-async def get_tasks(workflow_id: int, db: Session = Depends(get_db)):
-    tasks = db.query(models.Task).filter(models.Task.workflow_id == workflow_id).all()
-    return {"tasks": [{"id": t.id, "name": t.name, "status": t.status, "retries": t.retries, "output": t.output_data} for t in tasks]}
 
-@app.post("/workflows/{workflow_id}/tasks")
-async def create_task(workflow_id: int, task: dict, db: Session = Depends(get_db)):
-    new_task = models.Task(workflow_id=workflow_id, name=task.get("name"), input_data=task.get("input"))
-    db.add(new_task)
-    db.commit()
-    db.refresh(new_task)
-    # Trigger async task
-    run_task.delay(new_task.id)
-    return {"id": new_task.id, "status": "queued"}
+@app.exception_handler(HTTPException)
+async def handle_http_exception(request: Request, exc: HTTPException):
+    """Handle FastAPI HTTP exceptions."""
+    error = ApiError(
+        code=ErrorCode.INVALID_REQUEST if exc.status_code < 500 else ErrorCode.INTERNAL_ERROR,
+        message=str(exc.detail),
+        status_code=exc.status_code,
+        severity=ErrorSeverity.LOW if exc.status_code < 500 else ErrorSeverity.HIGH,
+        retryable=exc.status_code >= 500,
+    )
+    return await handle_api_error(request, error)
+
+
+@app.exception_handler(RequestValidationError)
+async def handle_validation_exception(request: Request, exc: RequestValidationError):
+    """Handle Pydantic validation errors."""
+    error = ApiError(
+        code=ErrorCode.INVALID_REQUEST,
+        message="Request validation failed.",
+        status_code=422,
+        severity=ErrorSeverity.LOW,
+        retryable=False,
+        details={"errors": exc.errors()},
+    )
+    return await handle_api_error(request, error)
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected_error(request: Request, exc: Exception):
+    """Handle unexpected exceptions."""
+    logger.exception("unhandled_exception", extra={"request_id": request.state.request_id, "path": str(request.url.path)})
+    sentry_sdk.capture_exception(exc)
+    error = ApiError(
+        code=ErrorCode.INTERNAL_ERROR,
+        message="An unexpected system error occurred.",
+        status_code=500,
+        severity=ErrorSeverity.HIGH,
+        retryable=True,
+    )
+    return await handle_api_error(request, error)
+
+
+@app.on_event("startup")
+def on_startup():
+    """Initialize database on startup."""
+    init_db()
+
+
+app.include_router(router)
