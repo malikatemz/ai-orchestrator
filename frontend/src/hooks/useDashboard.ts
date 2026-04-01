@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { getAuthToken } from '../lib/auth'
 import { captureClientError } from '../lib/monitoring'
 import { ApiClientError, orchestratorApi } from '../services/orchestratorApi'
-import type { OverviewResponse, TaskFormValues, WorkflowDetail, WorkflowFormValues } from '../types/orchestrator'
+import type { AppConfigResponse, OverviewResponse, TaskFormValues, WorkflowDetail, WorkflowFormValues } from '../types/orchestrator'
 
 const DEFAULT_WORKFLOW_FORM: WorkflowFormValues = {
   name: '',
@@ -27,6 +28,7 @@ function toUserMessage(error: unknown, fallback: string): string {
 }
 
 interface UseDashboardResult {
+  appConfig: AppConfigResponse | null
   overview: OverviewResponse | null
   selectedWorkflow: WorkflowDetail | null
   selectedWorkflowId: number | null
@@ -40,9 +42,12 @@ interface UseDashboardResult {
   setTaskForm: (values: TaskFormValues) => void
   createWorkflow: () => Promise<void>
   createTask: () => Promise<void>
+  retryTask: (taskId: number) => Promise<void>
+  resetDemo: () => Promise<void>
 }
 
 export function useDashboard(): UseDashboardResult {
+  const [appConfig, setAppConfig] = useState<AppConfigResponse | null>(null)
   const [overview, setOverview] = useState<OverviewResponse | null>(null)
   const [staleOverview, setStaleOverview] = useState<OverviewResponse | null>(null)
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowDetail | null>(null)
@@ -81,6 +86,17 @@ export function useDashboard(): UseDashboardResult {
 
     async function boot() {
       try {
+        const nextConfig = await orchestratorApi.getAppConfig()
+        if (!active) {
+          return
+        }
+        setAppConfig(nextConfig)
+
+        if (nextConfig.auth_required && !getAuthToken()) {
+          setError('Provide an API token to load secured orchestrator data.')
+          return
+        }
+
         await refreshOverview()
       } catch (caughtError) {
         if (active) {
@@ -100,7 +116,7 @@ export function useDashboard(): UseDashboardResult {
     void boot()
 
     const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && (!appConfig?.auth_required || Boolean(getAuthToken()))) {
         void refreshOverview().catch((caughtError) => {
           captureClientError(caughtError, { area: 'frontend', severity: 'medium' })
           setError(staleOverview ? 'Live data is temporarily unavailable. Showing the last known state.' : toUserMessage(caughtError, 'Unable to refresh dashboard'))
@@ -115,7 +131,7 @@ export function useDashboard(): UseDashboardResult {
       active = false
       window.clearInterval(interval)
     }
-  }, [refreshOverview, staleOverview])
+  }, [appConfig?.auth_required, refreshOverview, staleOverview])
 
   const selectWorkflow = useCallback(async (workflowId: number) => {
     setError('')
@@ -158,8 +174,44 @@ export function useDashboard(): UseDashboardResult {
     }
   }, [refreshOverview, selectedWorkflowId, taskForm])
 
+  const retryTask = useCallback(async (taskId: number) => {
+    setSubmitting(true)
+    setError('')
+
+    try {
+      const retriedTask = await orchestratorApi.retryTask(taskId)
+      await refreshOverview(retriedTask.workflow_id)
+    } catch (caughtError) {
+      captureClientError(caughtError, { area: 'frontend', severity: 'medium' })
+      setError(toUserMessage(caughtError, 'Task retry failed'))
+    } finally {
+      setSubmitting(false)
+    }
+  }, [refreshOverview])
+
+  const resetDemo = useCallback(async () => {
+    setSubmitting(true)
+    setError('')
+
+    try {
+      const nextOverview = await orchestratorApi.seedDemo()
+      setOverview(nextOverview)
+      setStaleOverview(nextOverview)
+      const nextWorkflowId = nextOverview.workflows[0]?.id ?? null
+      if (nextWorkflowId) {
+        await hydrateSelectedWorkflow(nextWorkflowId)
+      }
+    } catch (caughtError) {
+      captureClientError(caughtError, { area: 'frontend', severity: 'medium' })
+      setError(toUserMessage(caughtError, 'Demo reset failed'))
+    } finally {
+      setSubmitting(false)
+    }
+  }, [hydrateSelectedWorkflow])
+
   return useMemo(
     () => ({
+      appConfig,
       overview,
       selectedWorkflow,
       selectedWorkflowId,
@@ -172,20 +224,25 @@ export function useDashboard(): UseDashboardResult {
       setWorkflowForm,
       setTaskForm,
       createWorkflow,
-      createTask
+      createTask,
+      retryTask,
+      resetDemo,
     }),
     [
+      appConfig,
       createTask,
       createWorkflow,
       error,
       loading,
       overview,
+      resetDemo,
+      retryTask,
       selectedWorkflow,
       selectedWorkflowId,
       selectWorkflow,
       submitting,
       taskForm,
-      workflowForm
+      workflowForm,
     ]
   )
 }

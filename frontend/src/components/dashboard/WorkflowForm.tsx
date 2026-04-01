@@ -1,4 +1,4 @@
-import type { ChangeEvent, FormEvent } from 'react'
+import React, { type ChangeEvent, type FormEvent } from 'react'
 
 import type { WorkflowFormValues } from '../../types/orchestrator'
 

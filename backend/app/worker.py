@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import json
 from datetime import datetime
 from random import randint
-from typing import Dict, Any
+from typing import Any, Dict
 
 import sentry_sdk
 from celery import Celery
@@ -11,13 +13,14 @@ from .error_handling import ErrorCode
 from .models import Task, Workflow
 from .database import SessionLocal
 from .observability import configure_logging, log_event
+from .services import record_audit_event
 
 celery = Celery("worker", broker=settings.redis_url, backend=settings.redis_url)
 logger = configure_logging()
 
 
 def _build_result(task: Task) -> str:
-    """Build mock execution result for a task."""
+    input_text = task.input_data or ""
     risk_markers = sum(keyword in input_text.lower() for keyword in ["urgent", "blocked", "incident", "risk"])
     confidence = max(0.52, min(0.97, 0.72 + (len(input_text) / 1000) - (risk_markers * 0.05)))
     execution_summary = {
@@ -38,7 +41,6 @@ def _build_result(task: Task) -> str:
 
 @celery.task(bind=True, autoretry_for=(ConnectionError, TimeoutError), retry_backoff=True, retry_jitter=True, retry_kwargs={"max_retries": 5})
 def run_task(self, task_id: int) -> Dict[str, Any]:
-    """Execute a task asynchronously."""
     db = SessionLocal()
     task = None
     try:
@@ -49,7 +51,16 @@ def run_task(self, task_id: int) -> Dict[str, Any]:
 
         workflow = db.query(Workflow).filter(Workflow.id == task.workflow_id).first()
         now = datetime.utcnow()
-        log_event(logger, "info", "task_started", task_id=task.id, workflow_id=task.workflow_id, agent=task.agent, retry_count=task.retries)
+        log_event(
+            logger,
+            "info",
+            "task_started",
+            task_id=task.id,
+            workflow_id=task.workflow_id,
+            agent=task.agent,
+            queue_name=task.queue_name,
+            retry_count=task.retries,
+        )
         task.status = "running"
         task.stage = "analysis"
         task.started_at = now
@@ -65,16 +76,29 @@ def run_task(self, task_id: int) -> Dict[str, Any]:
         task.stage = "completed"
         task.completed_at = datetime.utcnow()
         db.commit()
+        record_audit_event(
+            db,
+            actor="system",
+            event="task_completed",
+            resource_type="task",
+            resource_id=task.id,
+            details={
+                "workflow_id": task.workflow_id,
+                "queue_name": task.queue_name,
+                "duration_seconds": task.duration_seconds,
+                "source_task_id": task.source_task_id,
+            },
+        )
         log_event(
             logger,
             "info",
             "task_completed",
             task_id=task.id,
             workflow_id=task.workflow_id,
+            queue_name=task.queue_name,
             duration_seconds=task.duration_seconds,
             retry_count=task.retries,
         )
-
         return {"status": "completed", "result": task.output_data}
     except Exception as exc:
         sentry_sdk.capture_exception(exc)
@@ -85,6 +109,20 @@ def run_task(self, task_id: int) -> Dict[str, Any]:
             task.retries += 1
             task.completed_at = datetime.utcnow()
             db.commit()
+            record_audit_event(
+                db,
+                actor="system",
+                event="task_failed",
+                resource_type="task",
+                resource_id=task.id,
+                details={
+                    "workflow_id": task.workflow_id,
+                    "queue_name": task.queue_name,
+                    "error": str(exc),
+                    "retry_count": task.retries,
+                    "source_task_id": task.source_task_id,
+                },
+            )
             log_event(
                 logger,
                 "error",
@@ -92,6 +130,7 @@ def run_task(self, task_id: int) -> Dict[str, Any]:
                 code=ErrorCode.TASK_RETRY_EXHAUSTED,
                 task_id=task.id,
                 workflow_id=task.workflow_id,
+                queue_name=task.queue_name,
                 retry_count=task.retries,
                 error=str(exc),
             )
@@ -100,13 +139,22 @@ def run_task(self, task_id: int) -> Dict[str, Any]:
         db.close()
 
 
-def queue_task(task_id: int) -> str:
+def queue_task(task_id: int, queue_name: str = "default") -> str:
     try:
-        run_task.delay(task_id)
-        log_event(logger, "info", "queue_dispatch", task_id=task_id, queue_mode="celery")
+        run_task.apply_async(args=[task_id], queue=queue_name)
+        log_event(logger, "info", "queue_dispatch", task_id=task_id, queue_name=queue_name, queue_mode="celery")
         return "celery"
     except Exception as exc:
         sentry_sdk.capture_exception(exc)
-        log_event(logger, "warning", "queue_degraded", code=ErrorCode.QUEUE_DEGRADED, task_id=task_id, queue_mode="inline", error=str(exc))
+        log_event(
+            logger,
+            "warning",
+            "queue_degraded",
+            code=ErrorCode.QUEUE_DEGRADED,
+            task_id=task_id,
+            queue_name=queue_name,
+            queue_mode="inline",
+            error=str(exc),
+        )
         run_task.run(task_id)
         return "inline"

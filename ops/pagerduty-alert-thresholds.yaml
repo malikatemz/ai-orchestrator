@@ -1,0 +1,60 @@
+service: ai-orchestrator
+severities:
+  sev1:
+    urgency: high
+    notify: pagerduty
+    thresholds:
+      - metric: api_5xx_rate
+        condition: "> 15%"
+        window: 5m
+      - metric: database_availability
+        condition: down
+        window: 2m
+      - metric: task_failure_rate
+        condition: "> 40%"
+        window: 10m
+      - metric: successful_task_completions
+        condition: "== 0"
+        window: 15m
+        during_active_traffic: true
+  sev2:
+    urgency: high
+    notify: pagerduty
+    thresholds:
+      - metric: api_5xx_rate
+        condition: "> 5%"
+        window: 10m
+      - metric: worker_backlog
+        condition: "> 500"
+        window: 15m
+      - metric: inline_fallback_active
+        condition: true
+        window: 15m
+      - metric: task_retry_exhaustion_count
+        condition: "> 25"
+        window: 15m
+  sev3:
+    urgency: medium
+    notify: slack
+    thresholds:
+      - metric: redis_availability
+        condition: down
+        window: 5m
+        note: only if inline fallback remains healthy
+      - metric: frontend_fetch_error_rate
+        condition: "> 3%"
+        window: 15m
+      - metric: task_latency_p95
+        condition: "> 30s"
+        window: 15m
+      - metric: repeated_dependency_errors
+        condition: "> 20"
+        window: 30m
+  sev4:
+    urgency: low
+    notify: none
+    thresholds:
+      - metric: validation_error_spike
+        condition: investigate
+      - metric: isolated_task_failures
+        condition: below_baseline

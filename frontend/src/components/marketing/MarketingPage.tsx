@@ -1,3 +1,4 @@
+import React from 'react'
 import type { MarketingPageContent } from '../../content/marketingPages'
 import { MarketingLayout } from './MarketingLayout'
 

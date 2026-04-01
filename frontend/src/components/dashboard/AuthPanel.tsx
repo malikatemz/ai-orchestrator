@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { getAuthToken, setAuthToken, clearAuthToken } from '../../lib/auth'
 
 export function AuthPanel() {
@@ -22,8 +22,7 @@ export function AuthPanel() {
 
     setAuthToken(token.trim())
     setSavedToken(token.trim())
-    setMessage('Saved credentials. Refreshing data in a moment...')
-    window.location.reload()
+    setMessage('Saved credentials. Refresh the page to apply changes.')
   }
 
   const handleClear = () => {
@@ -31,7 +30,6 @@ export function AuthPanel() {
     setToken('')
     setSavedToken('')
     setMessage('API token cleared, unauthenticated mode enabled.')
-    window.location.reload()
   }
 
   return (

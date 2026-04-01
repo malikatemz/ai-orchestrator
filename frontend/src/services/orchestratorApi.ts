@@ -1,7 +1,18 @@
 import { API_BASE } from '../lib/env'
 import { getAuthToken } from '../lib/auth'
 import { captureClientError } from '../lib/monitoring'
-import type { ApiErrorResponse, OverviewResponse, TaskFormValues, TaskResponse, WorkflowDetail, WorkflowFormValues, WorkflowSummary } from '../types/orchestrator'
+import type {
+  ApiErrorResponse,
+  AppConfigResponse,
+  AuditLogResponse,
+  OpsMetricsResponse,
+  OverviewResponse,
+  TaskFormValues,
+  TaskResponse,
+  WorkflowDetail,
+  WorkflowFormValues,
+  WorkflowSummary,
+} from '../types/orchestrator'
 
 const RETRYABLE_METHODS = new Set(['GET'])
 const RETRY_DELAYS_MS = [500, 1500, 3500]
@@ -49,7 +60,6 @@ async function parseErrorResponse(response: Response): Promise<ApiClientError> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method || 'GET'
   const shouldRetry = RETRYABLE_METHODS.has(method.toUpperCase())
-
   const authToken = getAuthToken()
   const headers = {
     'Content-Type': 'application/json',
@@ -111,6 +121,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const orchestratorApi = {
+  getAppConfig(): Promise<AppConfigResponse> {
+    return request<AppConfigResponse>('/app-config')
+  },
   getOverview(): Promise<OverviewResponse> {
     return request<OverviewResponse>('/overview')
   },
@@ -121,14 +134,30 @@ export const orchestratorApi = {
     return request<WorkflowSummary>('/workflows', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     })
   },
   createTask(workflowId: number, payload: TaskFormValues): Promise<TaskResponse> {
     return request<TaskResponse>(`/workflows/${workflowId}/tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     })
-  }
+  },
+  retryTask(taskId: number): Promise<TaskResponse> {
+    return request<TaskResponse>(`/tasks/${taskId}/retry`, {
+      method: 'POST',
+    })
+  },
+  seedDemo(): Promise<OverviewResponse> {
+    return request<OverviewResponse>('/seed-demo', {
+      method: 'POST',
+    })
+  },
+  getOpsMetrics(): Promise<OpsMetricsResponse> {
+    return request<OpsMetricsResponse>('/ops/metrics')
+  },
+  getAuditLogs(): Promise<AuditLogResponse[]> {
+    return request<AuditLogResponse[]>('/ops/audit-logs')
+  },
 }

@@ -1,15 +1,10 @@
-import os
+from __future__ import annotations
+
+import json
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, create_engine
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./ai_orchestrator.db")
-
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Session, declarative_base, relationship
 
 Base = declarative_base()
 
@@ -36,10 +31,12 @@ class Task(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     workflow_id = Column(Integer, ForeignKey("workflows.id"), nullable=False, index=True)
+    source_task_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
     name = Column(String, nullable=False)
     agent = Column(String, default="planner", nullable=False)
     stage = Column(String, default="queued", nullable=False)
     status = Column(String, default="pending", nullable=False)
+    queue_name = Column(String, default="default", nullable=False)
     input_data = Column(Text, nullable=False)
     output_data = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
@@ -51,6 +48,45 @@ class Task(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     workflow = relationship("Workflow", back_populates="tasks")
+    source_task = relationship("Task", remote_side=[id], uselist=False)
 
 
-Base.metadata.create_all(bind=engine)
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    actor = Column(String, nullable=False, default="system")
+    event = Column(String, nullable=False, index=True)
+    resource_type = Column(String, nullable=False, index=True)
+    resource_id = Column(Integer, nullable=True, index=True)
+    details_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    @property
+    def details(self) -> dict:
+        try:
+            return json.loads(self.details_json or "{}")
+        except json.JSONDecodeError:
+            return {}
+
+
+def count_records(db: Session, model) -> int:
+    return db.query(model).count()
+
+
+def build_engine(database_url: str):
+    from .database import build_engine as database_build_engine
+
+    return database_build_engine(database_url)
+
+
+def build_session_factory(engine):
+    from .database import build_session
+
+    return build_session(engine)
+
+
+def init_db(engine_override=None):
+    from .database import init_db as database_init_db
+
+    return database_init_db(engine_override)

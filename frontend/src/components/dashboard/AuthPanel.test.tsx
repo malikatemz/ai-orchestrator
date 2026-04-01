@@ -1,24 +1,26 @@
-import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import React from 'react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-vi.mock('../../lib/auth', () => {
-  let token = ''
-  return {
-    getAuthToken: () => token,
-    setAuthToken: (newToken: string) => {
-      token = newToken
-    },
-    clearAuthToken: () => {
-      token = ''
-    },
-  }
-})
+let mockToken = ''
 
-const windowReload = vi.spyOn(window.location, 'reload').mockImplementation(() => undefined)
+vi.mock('../../lib/auth', () => ({
+  getAuthToken: () => mockToken,
+  setAuthToken: (newToken: string) => {
+    mockToken = newToken
+  },
+  clearAuthToken: () => {
+    mockToken = ''
+  },
+}))
 
 import { AuthPanel } from './AuthPanel'
 
 describe('AuthPanel', () => {
+  beforeEach(() => {
+    mockToken = ''
+  })
+
   it('shows placeholder and allows token save/clear', () => {
     render(<AuthPanel />)
 
@@ -28,13 +30,30 @@ describe('AuthPanel', () => {
     fireEvent.change(input, { target: { value: 'my-token' } })
     fireEvent.click(screen.getByText('Save token'))
 
-    expect(windowReload).toHaveBeenCalled()
+    expect(screen.getByText('Saved credentials. Refresh the page to apply changes.')).toBeTruthy()
   })
 
   it('clears API token', () => {
     render(<AuthPanel />)
 
     fireEvent.click(screen.getByText('Clear token'))
-    expect(windowReload).toHaveBeenCalledTimes(2)
+    expect(screen.getByText('API token cleared, unauthenticated mode enabled.')).toBeTruthy()
+  })
+
+  it('shows error for empty token', () => {
+    mockToken = 'existing-token' // Set existing token for this test
+    render(<AuthPanel />)
+
+    // Clear the existing token from input
+    const input = screen.getByPlaceholderText('Enter API token') as HTMLInputElement
+    act(() => {
+      fireEvent.change(input, { target: { value: '' } })
+    })
+    
+    // Now try to save
+    act(() => {
+      fireEvent.click(screen.getByText('Save token'))
+    })
+    expect(screen.getByText('API token is required to authenticate with the backend.')).toBeTruthy()
   })
 })

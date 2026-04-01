@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-orchestrator-worker
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: ai-orchestrator-worker
+  template:
+    metadata:
+      labels:
+        app: ai-orchestrator-worker
+    spec:
+      containers:
+        - name: worker
+          image: your-registry/ai-orchestrator-api:latest
+          command: ["celery", "-A", "app.worker.celery", "worker", "--loglevel=info", "-Q", "high_priority,default,low_cost"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          # Replace Redis/Postgres with managed services or add separate manifests/Helm charts.
+          # Add KEDA ScaledObjects later for queue-depth based autoscaling.

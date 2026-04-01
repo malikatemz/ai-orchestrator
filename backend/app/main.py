@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 
 import sentry_sdk
@@ -6,22 +8,22 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .auth import get_current_user
 from .config import settings
-from .database import init_db
+from .database import SessionLocal, init_db
 from .error_handling import ApiError, ErrorCode, ErrorSeverity
 from .observability import configure_logging, initialize_sentry
 from .rate_limiter import maybe_rate_limit
 from .routes import router
+from .services import seed_demo_data
 
 initialize_sentry()
 logger = configure_logging()
 
-app = FastAPI(title=settings.app_name, version="1.0.0")
+app = FastAPI(title=settings.app_name, version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins,
+    allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,7 +32,6 @@ app.add_middleware(
 
 @app.middleware("http")
 async def add_request_id(request: Request, call_next):
-    """Add request ID and apply rate limiting."""
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
     request.state.request_id = request_id
     maybe_rate_limit(request)
@@ -41,7 +42,6 @@ async def add_request_id(request: Request, call_next):
 
 @app.exception_handler(ApiError)
 async def handle_api_error(request: Request, exc: ApiError):
-    """Handle custom API errors."""
     payload = exc.as_payload()
     payload["request_id"] = request.state.request_id
     return JSONResponse(status_code=exc.status_code, content=payload)
@@ -49,7 +49,6 @@ async def handle_api_error(request: Request, exc: ApiError):
 
 @app.exception_handler(HTTPException)
 async def handle_http_exception(request: Request, exc: HTTPException):
-    """Handle FastAPI HTTP exceptions."""
     error = ApiError(
         code=ErrorCode.INVALID_REQUEST if exc.status_code < 500 else ErrorCode.INTERNAL_ERROR,
         message=str(exc.detail),
@@ -62,7 +61,6 @@ async def handle_http_exception(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def handle_validation_exception(request: Request, exc: RequestValidationError):
-    """Handle Pydantic validation errors."""
     error = ApiError(
         code=ErrorCode.INVALID_REQUEST,
         message="Request validation failed.",
@@ -76,7 +74,6 @@ async def handle_validation_exception(request: Request, exc: RequestValidationEr
 
 @app.exception_handler(Exception)
 async def handle_unexpected_error(request: Request, exc: Exception):
-    """Handle unexpected exceptions."""
     logger.exception("unhandled_exception", extra={"request_id": request.state.request_id, "path": str(request.url.path)})
     sentry_sdk.capture_exception(exc)
     error = ApiError(
@@ -91,8 +88,16 @@ async def handle_unexpected_error(request: Request, exc: Exception):
 
 @app.on_event("startup")
 def on_startup():
-    """Initialize database on startup."""
-    init_db()
+    settings.validate_runtime()
+    if settings.should_auto_init_db:
+        init_db()
+
+    if settings.should_auto_seed_demo:
+        db = SessionLocal()
+        try:
+            seed_demo_data(db, force=False, actor="system")
+        finally:
+            db.close()
 
 
 app.include_router(router)

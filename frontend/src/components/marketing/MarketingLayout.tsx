@@ -1,5 +1,5 @@
+import React, { type PropsWithChildren } from 'react'
 import Link from 'next/link'
-import type { PropsWithChildren } from 'react'
 
 import { SeoHead } from '../common/SeoHead'
 import { coreRoutes } from '../../lib/routes'

@@ -9,9 +9,10 @@ interface ExecutionPanelProps {
   disabled: boolean
   onTaskFormChange: (value: TaskFormValues) => void
   onTaskSubmit: () => void
+  onRetryTask: (taskId: number) => void
 }
 
-export function ExecutionPanel({ workflow, taskForm, disabled, onTaskFormChange, onTaskSubmit }: ExecutionPanelProps) {
+export function ExecutionPanel({ workflow, taskForm, disabled, onTaskFormChange, onTaskSubmit, onRetryTask }: ExecutionPanelProps) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     onTaskSubmit()
@@ -84,13 +85,19 @@ export function ExecutionPanel({ workflow, taskForm, disabled, onTaskFormChange,
                   <div className="task-pills">
                     <span className={`pill status-${task.status}`}>{task.status}</span>
                     <span className="pill neutral">{task.stage}</span>
+                    <span className="pill neutral">{task.queue_name}</span>
                   </div>
                 </div>
                 <p className="task-copy">{task.input}</p>
-                <p className="muted">{task.output || 'Awaiting output from the orchestration worker.'}</p>
+                <p className="muted">{task.output || task.error_message || 'Awaiting output from the orchestration worker.'}</p>
                 <div className="task-footer">
                   <span>Retries: {task.retries}</span>
                   <span>Duration: {task.duration_seconds ? `${task.duration_seconds}s` : 'Pending'}</span>
+                  {task.status === 'failed' ? (
+                    <button type="button" className="btn btn-muted" disabled={disabled} onClick={() => onRetryTask(task.id)}>
+                      Retry task
+                    </button>
+                  ) : null}
                 </div>
               </article>
             ))}

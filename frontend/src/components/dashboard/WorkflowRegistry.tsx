@@ -1,3 +1,4 @@
+import React from 'react'
 import type { WorkflowSummary } from '../../types/orchestrator'
 
 interface WorkflowRegistryProps {

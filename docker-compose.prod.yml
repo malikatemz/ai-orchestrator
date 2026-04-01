@@ -1,0 +1,112 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_net
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - app_net
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      - db
+      - redis
+    environment:
+      APP_MODE: ${APP_MODE}
+      PUBLIC_DEMO_MODE: ${PUBLIC_DEMO_MODE}
+      AUTO_SEED_DEMO: ${AUTO_SEED_DEMO}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      API_TOKEN: ${API_TOKEN}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+      PUBLIC_API_URL: ${PUBLIC_API_URL}
+      LOG_LEVEL: ${LOG_LEVEL}
+      SENTRY_DSN: ${SENTRY_DSN}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - app_net
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: celery -A app.worker.celery worker --loglevel=info -Q high_priority,default,low_cost
+    depends_on:
+      - db
+      - redis
+    environment:
+      APP_MODE: ${APP_MODE}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      API_TOKEN: ${API_TOKEN}
+      LOG_LEVEL: ${LOG_LEVEL}
+      SENTRY_DSN: ${SENTRY_DSN}
+    networks:
+      - app_net
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_URL}
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_APP_URL}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_URL}
+      NEXT_PUBLIC_SITE_URL: ${PUBLIC_APP_URL}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then((response)=>{if(!response.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - app_net
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      - app_net
+
+networks:
+  app_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

@@ -32,10 +32,17 @@ docker-compose up --build
 ```bash
 cd backend
 pip install -r requirements.txt
+cp ../.env .env
 uvicorn app.main:app --reload
 ```
 
 The backend defaults to a local SQLite database when `DATABASE_URL` is not set, so it can run without PostgreSQL for quick development.
+
+#### Security
+- Requires bearer token auth:
+  `Authorization: Bearer <API_TOKEN>`
+- Default token is set in `.env` as `API_TOKEN`.
+- Basic rate limit applied: 60 requests per minute per client.
 
 ### Worker
 
@@ -56,6 +63,24 @@ npm run dev
 ```
 
 Set `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local` if your API is not running on `http://localhost:8000`.
+Set `NEXT_PUBLIC_SITE_URL` to your real production domain before deploying so canonicals, JSON-LD, `robots.txt`, and `sitemap.xml` do not reference localhost.
+
+## Test suite
+
+### Backend tests
+
+```bash
+cd backend
+pytest
+```
+
+### Frontend tests
+
+```bash
+cd frontend
+npm install
+npm test
+```
 
 ## Key API endpoints
 
@@ -66,11 +91,22 @@ Set `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local` if your API is not runni
 - `POST /workflows`: create a workflow
 - `POST /workflows/{id}/tasks`: dispatch a task
 
+## Frontend routes
+
+- `/`: product home plus live dashboard
+- `/ai-workflow-orchestration`: landing page for workflow orchestration intent
+- `/multi-agent-orchestration`: landing page for multi-agent coordination intent
+- `/ai-operations-dashboard`: landing page for monitoring and dashboard intent
+- `/ai-workflow-automation-use-cases`: solution-focused page with practical automation examples
+- `/ai-agent-monitoring-checklist`: tactical page for production monitoring and reliability reviews
+
 ## Project structure
 
 - `backend/`: FastAPI app, SQLAlchemy models, and Celery worker
 - `frontend/`: Next.js dashboard
 - `docker-compose.yml`: local full-system stack
+- `ERROR_HANDLING.md`: error taxonomy, retries, observability, and alert thresholds
+- `PRODUCTION_DEBUGGING.md`: 10-step debugging runbook and environment diff checklist
 
 ## Next improvements
 
