@@ -1,0 +1,28 @@
+[MASTER]
+load-plugins=pylint_django
+django-settings-module=config.settings
+max-attributes=7
+disable=
+  C0111,  # missing-docstring
+  C0103,  # invalid-name
+  R0903,  # too-few-public-methods
+  W0212,  # protected-access
+  W1203,  # logging-fstring-interpolation
+  C0302,  # too-many-lines
+  R0913,  # too-many-arguments
+  R0914,  # too-many-locals
+  W0201,  # attribute-defined-outside-init
+
+[FORMAT]
+max-line-length=120
+indent-string='    '
+
+[DESIGN]
+max-locals=25
+max-branches=15
+max-statements=60
+
+[tool.pylance]
+python.analysis.typeCheckingMode = "basic"
+python.analysis.extraPaths = ["backend"]
+python.defaultInterpreterPath = "${workspaceFolder}/.venv/bin/python"

@@ -89,11 +89,13 @@ jobs:
           version: latest
 
       - name: Deploy with Helm
+        # Note: KUBE_DOMAIN is optional. Uses orchestrator.local if not provided
         run: |
+          DOMAIN_VALUE="orchestrator.local"
           helm upgrade --install orchestrator ./helm/orchestrator \
             --namespace orchestrator-prod \
             --create-namespace \
-            --set global.domain="${{ secrets.KUBE_DOMAIN }}" \
+            --set global.domain="${DOMAIN_VALUE}" \
             --set images.api.tag="${{ github.sha }}" \
             --set images.worker.tag="${{ github.sha }}" \
             --set images.frontend.tag="${{ github.sha }}" \

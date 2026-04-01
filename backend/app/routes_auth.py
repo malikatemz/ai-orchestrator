@@ -7,8 +7,7 @@ import logging
 
 from ..database import get_db
 from ..auth.oauth import google_redirect_url, google_callback, github_redirect_url, github_callback, get_saml_metadata
-from ..auth.tokens import create_access_token, create_refresh_token, decode_token, refresh_access_token
-from ..models import User
+from ..auth.tokens import create_access_token, create_refresh_token, refresh_access_token
 
 logger = logging.getLogger(__name__)
 

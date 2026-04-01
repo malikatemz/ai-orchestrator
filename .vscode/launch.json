@@ -1,5 +1,31 @@
 {
+    "version": "0.2.0",
     "configurations": [
+        {
+            "name": "Backend API",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend",
+                "ENVIRONMENT": "development"
+            }
+        },
+        {
+            "name": "Celery Worker",
+            "type": "python",
+            "request": "launch",
+            "module": "celery",
+            "args": ["-A", "workers.tasks", "worker", "--loglevel=info"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/backend",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend",
+                "ENVIRONMENT": "development"
+            }
+        },
         {
             "name": "Containers: Node.js Launch",
             "type": "docker",

@@ -16,11 +16,21 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
       - name: Install rsync
         run: sudo apt-get update && sudo apt-get install -y rsync
+      - name: Check VPS Secrets
+        id: check_secrets
+        run: |
+          if [ -z "${{ secrets.VPS_SSH_KEY }}" ] || [ -z "${{ secrets.VPS_USER }}" ] || [ -z "${{ secrets.VPS_HOST }}" ]; then
+            echo "missing_secrets=true" >> $GITHUB_OUTPUT
+          else
+            echo "missing_secrets=false" >> $GITHUB_OUTPUT
+          fi
       - name: Start SSH agent
+        if: steps.check_secrets.outputs.missing_secrets == 'false'
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
       - name: Sync repository to VPS
+        if: steps.check_secrets.outputs.missing_secrets == 'false'
         run: |
           rsync -az --delete \
             --exclude ".git" \
@@ -28,6 +38,10 @@ jobs:
             --exclude "frontend/.next" \
             ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ secrets.VPS_APP_PATH }}/
       - name: Deploy on VPS
+        if: steps.check_secrets.outputs.missing_secrets == 'false'
         run: |
           ssh -p "${{ secrets.VPS_PORT || '22' }}" ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             "cd ${{ secrets.VPS_APP_PATH }} && chmod +x ops/deploy.sh && ./ops/deploy.sh"
+      - name: Deployment Information
+        if: steps.check_secrets.outputs.missing_secrets == 'true'
+        run: echo "VPS deployment skipped - configure VPS_SSH_KEY, VPS_USER, and VPS_HOST secrets to enable"
