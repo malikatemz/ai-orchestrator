@@ -1,7 +1,3 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 :root {
   --bg: #f4efe4;
   --bg-strong: #e6dcc7;
@@ -50,6 +46,14 @@ textarea {
   padding: 32px 0 56px;
 }
 
+.marketing-shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 24px 0 56px;
+  display: grid;
+  gap: 20px;
+}
+
 .panel {
   background: var(--panel);
   backdrop-filter: blur(14px);
@@ -64,6 +68,10 @@ textarea {
   gap: 24px;
   padding: 28px;
   margin-bottom: 24px;
+}
+
+.marketing-hero {
+  padding: 28px;
 }
 
 .hero h1,
@@ -105,6 +113,32 @@ textarea {
   background: var(--panel-strong);
   border: 1px solid var(--line);
 }
+
+.auth-panel {
+  background: var(--panel-strong);
+  border-color: var(--accent);
+  border-width: 1px;
+  margin-bottom: 16px;
+  padding: 16px;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.auth-panel .actions {
+  display: flex;
+  gap: 8px;
+}
+
+.auth-panel .input {
+  width: 100%;
+}
+
 
 .hero-meta span,
 .detail-label,
@@ -160,15 +194,53 @@ textarea {
   margin-bottom: 18px;
 }
 
+.section-nav,
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.section-nav {
+  flex-wrap: wrap;
+}
+
+.section-nav a,
+.top-links a,
+.brand-mark {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.top-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.brand-mark {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.2rem;
+}
+
 .section-header h2 {
   font-size: 1.8rem;
 }
 
 .workflow-list,
 .task-list,
-.recent-list {
+.recent-list,
+.route-grid {
   display: grid;
   gap: 14px;
+}
+
+.route-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .workflow-card,
@@ -180,6 +252,29 @@ textarea {
   padding: 18px;
   background: var(--panel-strong);
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.route-card {
+  display: grid;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 18px;
+  background: var(--panel-strong);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.route-card:hover,
+.route-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(15, 118, 110, 0.35);
+  box-shadow: 0 18px 38px rgba(15, 118, 110, 0.12);
+}
+
+.static-card {
+  cursor: default;
 }
 
 .workflow-card {
@@ -311,6 +406,34 @@ textarea {
   padding: 24px;
 }
 
+.prose-card h2 {
+  margin: 0 0 12px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.7rem;
+}
+
+.prose-card p {
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.prose-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.marketing-grid {
+  margin-bottom: 0;
+}
+
+.marketing-footer h2 {
+  margin: 0 0 16px;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -348,7 +471,8 @@ textarea {
 @media (max-width: 1100px) {
   .hero,
   .content-grid,
-  .stats-grid {
+  .stats-grid,
+  .route-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -360,10 +484,17 @@ textarea {
   }
 
   .hero,
+  .marketing-hero,
   .panel,
   .detail-panel {
     padding: 18px;
     border-radius: 20px;
+  }
+
+  .section-nav,
+  .top-nav {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .detail-grid {
