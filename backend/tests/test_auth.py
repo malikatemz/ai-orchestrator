@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-from app import auth
+from app import api_auth as auth
 
 
 class Credentials:

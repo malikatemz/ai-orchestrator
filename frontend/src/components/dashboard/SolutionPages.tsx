@@ -1,7 +1,7 @@
 import React from 'react'
 import Link from 'next/link'
 
-import { coreRoutes } from '../../lib/routes'
+import { marketingRoutes } from '../../lib/routes'
 
 export function SolutionPages() {
   return (
@@ -13,7 +13,7 @@ export function SolutionPages() {
         </div>
       </div>
       <div className="route-grid">
-        {coreRoutes.filter((route) => route.href !== '/').map((route) => (
+        {marketingRoutes.filter((route) => route.href !== '/').map((route) => (
           <Link key={route.href} href={route.href} className="route-card">
             <strong>{route.label}</strong>
             <span>{route.description}</span>

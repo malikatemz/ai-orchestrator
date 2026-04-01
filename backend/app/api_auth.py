@@ -33,3 +33,4 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid auth token")
 
     return {"sub": "service-user", "scopes": ["orchestrator:access", "orchestrator:admin"]}
+

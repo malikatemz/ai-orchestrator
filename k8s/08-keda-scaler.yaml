@@ -1,0 +1,21 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: orchestrator-worker-scaler
+  namespace: orchestrator-prod
+spec:
+  scaleTargetRef:
+    name: orchestrator-worker
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  triggers:
+  - type: redis
+    metadata:
+      address: redis:6379
+      listName: celery  # Your Celery task queue name
+      listLength: "50"  # Scale up when queue > 50 items
+      databaseIndex: "0"
+    authModes:
+    - bearer
+  pollingInterval: 30
+  cooldownPeriod: 300

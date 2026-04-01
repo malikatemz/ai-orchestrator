@@ -19,7 +19,7 @@ export const marketingPages: Record<
   workflow: {
     title: 'AI Workflow Orchestration Software | AI Orchestrator',
     description:
-      'AI workflow orchestration software for designing, monitoring, and scaling reliable AI pipelines with retries, visibility, and execution control.',
+      'AI workflow orchestration software for designing repeatable AI pipelines with clear stages, retries, ownership, and execution control.',
     path: '/ai-workflow-orchestration',
     eyebrow: 'Workflow orchestration',
     heading: 'AI workflow orchestration for teams that need reliability, not just demos.',
@@ -107,7 +107,7 @@ export const marketingPages: Record<
   multiAgent: {
     title: 'Multi-Agent Orchestration Platform | AI Orchestrator',
     description:
-      'Coordinate planner, researcher, critic, and executor agents with a multi-agent orchestration platform built for visibility, control, and reliable handoffs.',
+      'Coordinate planner, researcher, critic, and executor agents with a multi-agent orchestration platform built for reliable handoffs and visible execution.',
     path: '/multi-agent-orchestration',
     eyebrow: 'Agent coordination',
     heading: 'Multi-agent orchestration with clearer handoffs, better visibility, and less operational guesswork.',
@@ -179,9 +179,9 @@ export const marketingPages: Record<
     )
   },
   operations: {
-    title: 'AI Operations Dashboard | Monitor AI Workflows | AI Orchestrator',
+    title: 'AI Operations Dashboard for Workflow Monitoring | AI Orchestrator',
     description:
-      'An AI operations dashboard for monitoring workflow health, recent task activity, execution status, and reliability signals across your AI system.',
+      'An AI operations dashboard for monitoring workflow health, recent task activity, execution status, and reliability signals across production AI systems.',
     path: '/ai-operations-dashboard',
     eyebrow: 'Operations visibility',
     heading: 'An AI operations dashboard for monitoring workflow health and execution in real time.',
@@ -246,9 +246,9 @@ export const marketingPages: Record<
     )
   },
   useCases: {
-    title: 'AI Workflow Automation Use Cases | AI Orchestrator',
+    title: 'AI Workflow Automation Use Cases by Team | AI Orchestrator',
     description:
-      'Practical AI workflow automation use cases for support, operations, lifecycle, and internal platform teams evaluating production-ready orchestration.',
+      'Practical AI workflow automation use cases for support, operations, lifecycle, and platform teams evaluating production-ready orchestration.',
     path: '/ai-workflow-automation-use-cases',
     eyebrow: 'Use cases',
     heading: 'AI workflow automation use cases teams can actually operationalize.',
@@ -318,7 +318,7 @@ export const marketingPages: Record<
     )
   },
   monitoringChecklist: {
-    title: 'AI Agent Monitoring Checklist | AI Orchestrator',
+    title: 'AI Agent Monitoring Checklist for Production Teams | AI Orchestrator',
     description:
       'A practical AI agent monitoring checklist covering task states, failures, retries, ownership, observability, and dashboard signals for production teams.',
     path: '/ai-agent-monitoring-checklist',

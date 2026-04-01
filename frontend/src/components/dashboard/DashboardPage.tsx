@@ -14,6 +14,24 @@ import { WorkflowForm } from './WorkflowForm'
 import { WorkflowRegistry } from './WorkflowRegistry'
 
 export function DashboardPage() {
+  const faqItems = [
+    {
+      question: 'What is an AI control plane?',
+      answer:
+        'An AI control plane is the operational layer that coordinates workflow routing, retries, execution states, and monitoring across AI systems.',
+    },
+    {
+      question: 'How is this different from workflow orchestration software?',
+      answer:
+        'The homepage introduces the broader control plane, while the workflow orchestration page goes deeper on pipeline design, stage logic, and task routing.',
+    },
+    {
+      question: 'How do teams monitor AI agents in production?',
+      answer:
+        'Teams combine health checks, execution logs, failure alerts, and dashboards to spot weak handoffs, repeated retries, and stuck work quickly.',
+    },
+  ]
+
   const {
     appConfig,
     overview,
@@ -39,10 +57,11 @@ export function DashboardPage() {
   return (
     <>
       <SeoHead
-        title="AI Orchestrator | AI Workflow Orchestration Platform"
-        description="AI Orchestrator is a workflow orchestration platform for managing AI agents, monitoring task execution, and improving reliability with visibility, retries, and control."
-        keywords="AI orchestrator, AI workflow orchestration, agent orchestration, multi-agent workflows, AI operations dashboard"
+        title="AI Orchestrator | AI Control Plane for Production Workflows"
+        description="AI Orchestrator is an AI control plane for routing tasks, monitoring execution, and improving reliability across production AI workflows."
+        keywords="AI control plane, AI workflow dashboard, agent operations platform, AI reliability software, workflow monitoring"
         path="/"
+        faqItems={faqItems}
       />
 
       <main className="shell">
@@ -64,8 +83,8 @@ export function DashboardPage() {
               execution queues, and a frontend that can monitor the whole loop.
             </p>
             <p className="lead compact">
-              Use AI Orchestrator to manage AI workflow orchestration, coordinate multiple agents, and keep your AI
-              operations stack crawlable, observable, and ready to scale.
+              Use AI Orchestrator to coordinate task routing, retry behavior, and execution visibility across the AI
+              systems your team depends on every day.
             </p>
           </div>
           <div className="hero-meta">
@@ -118,9 +137,9 @@ export function DashboardPage() {
                 </div>
               </div>
               <p>
-                AI Orchestrator is an AI workflow orchestration platform designed for teams that need reliable routing,
-                agent coordination, execution visibility, and operational oversight. Even if JavaScript is delayed or
-                disabled, this page should still explain the core product, related use cases, and where to go next.
+                AI Orchestrator is the control-plane layer for teams that need reliable routing, agent coordination,
+                execution visibility, and operational oversight. Even if JavaScript is delayed or disabled, this page
+                should still explain the core product, the main evaluation paths, and where to go next.
               </p>
               <p>
                 The platform supports workflow design, task dispatching, agent-specific execution, and live monitoring.

@@ -1,0 +1,112 @@
+name: Deploy to Kubernetes
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/api:${{ github.sha }}
+
+      - name: Build and push Worker
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.worker
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/worker:${{ github.sha }}
+
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/frontend:${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Run backend tests
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pytest
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm ci
+          npm test
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: latest
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install orchestrator ./helm/orchestrator \
+            --namespace orchestrator-prod \
+            --create-namespace \
+            --set global.domain="${{ secrets.KUBE_DOMAIN }}" \
+            --set images.api.tag="${{ github.sha }}" \
+            --set images.worker.tag="${{ github.sha }}" \
+            --set images.frontend.tag="${{ github.sha }}" \
+            --wait \
+            --timeout=5m
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/orchestrator-api -n orchestrator-prod --timeout=5m
+          kubectl rollout status deployment/orchestrator-worker -n orchestrator-prod --timeout=5m
+          kubectl rollout status deployment/orchestrator-frontend -n orchestrator-prod --timeout=5m
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n orchestrator-prod
+          kubectl get svc -n orchestrator-prod

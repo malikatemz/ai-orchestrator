@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from random import randint
 from typing import Any, Dict
 
@@ -14,6 +13,7 @@ from .models import Task, Workflow
 from .database import SessionLocal
 from .observability import configure_logging, log_event
 from .services import record_audit_event
+from .time_utils import utc_now
 
 celery = Celery("worker", broker=settings.redis_url, backend=settings.redis_url)
 logger = configure_logging()
@@ -50,7 +50,7 @@ def run_task(self, task_id: int) -> Dict[str, Any]:
             return {"status": "error", "message": "Task not found", "code": ErrorCode.TASK_NOT_FOUND}
 
         workflow = db.query(Workflow).filter(Workflow.id == task.workflow_id).first()
-        now = datetime.utcnow()
+        now = utc_now()
         log_event(
             logger,
             "info",
@@ -74,7 +74,7 @@ def run_task(self, task_id: int) -> Dict[str, Any]:
         task.output_data = _build_result(task)
         task.status = "completed"
         task.stage = "completed"
-        task.completed_at = datetime.utcnow()
+        task.completed_at = utc_now()
         db.commit()
         record_audit_event(
             db,
@@ -107,7 +107,7 @@ def run_task(self, task_id: int) -> Dict[str, Any]:
             task.stage = "failed"
             task.error_message = str(exc)
             task.retries += 1
-            task.completed_at = datetime.utcnow()
+            task.completed_at = utc_now()
             db.commit()
             record_audit_event(
                 db,

@@ -4,7 +4,7 @@ import sys
 from typing import Any
 
 import sentry_sdk
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
@@ -13,7 +13,7 @@ from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 def configure_logging() -> logging.Logger:
     """Configure JSON logging for the application."""
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(jsonlogger.JsonFormatter())
+    handler.setFormatter(JsonFormatter())
 
     logger = logging.getLogger("ai_orchestrator")
     logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
