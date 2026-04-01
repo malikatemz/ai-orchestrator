@@ -22,7 +22,7 @@ aiohttp==3.9.1
 # Authentication & Authorization
 authlib==1.3.0
 python-jose[cryptography]==3.3.0
-pyjwt==2.8.1
+pyjwt==2.7.0
 passlib[bcrypt]==1.7.4
 
 # OAuth Providers
