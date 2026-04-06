@@ -6,9 +6,9 @@ import json
 import stripe
 import logging
 
-from ..database import get_db
-from ..config import get_settings
-from ..billing import (
+from .database import get_db
+from .config import get_settings
+from .billing import (
     create_checkout_session,
     handle_checkout_completed,
     handle_invoice_payment_failed,
@@ -16,8 +16,8 @@ from ..billing import (
     get_usage_for_period,
     check_subscription_active,
 )
-from ..models import Organization, UsageRecord
-from ..schemas import CheckoutSessionRequest, CheckoutSessionResponse, UsageResponse
+from .models import Organization, UsageRecord
+from .schemas import CheckoutSessionRequest, CheckoutSessionResponse, UsageResponse
 from .api_auth import get_current_user
 
 logger = logging.getLogger(__name__)

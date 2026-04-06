@@ -5,9 +5,9 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 import logging
 
-from ..database import get_db
-from ..auth.oauth import google_redirect_url, google_callback, github_redirect_url, github_callback, get_saml_metadata
-from ..auth.tokens import create_access_token, create_refresh_token, refresh_access_token
+from .database import get_db
+from .auth.oauth import google_redirect_url, google_callback, github_redirect_url, github_callback, get_saml_metadata
+from .auth.tokens import create_access_token, create_refresh_token, refresh_access_token
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ async def logout(
     refresh_token: str,
 ):
     """Revoke refresh token"""
-    from ..auth.tokens import revoke_token
+    from .auth.tokens import revoke_token
     
     try:
         revoke_token(refresh_token, token_type="refresh")
@@ -126,3 +126,4 @@ async def logout(
     except Exception as e:
         logger.error(f"Logout error: {str(e)}")
         raise HTTPException(status_code=500, detail="Logout failed")
+
