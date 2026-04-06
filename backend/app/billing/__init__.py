@@ -7,6 +7,7 @@ from .service import (
     handle_subscription_deleted,
     report_usage,
     get_usage_for_period,
+    check_subscription_active,
 )
 from .models import SubscriptionPlan
 
@@ -17,5 +18,6 @@ __all__ = [
     "handle_subscription_deleted",
     "report_usage",
     "get_usage_for_period",
+    "check_subscription_active",
     "SubscriptionPlan",
 ]

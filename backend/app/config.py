@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     auto_seed_demo: bool = False
     public_app_url: str = "http://localhost:3000"
     public_api_url: str = "http://localhost:8000"
+    
+    # Stripe billing
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
 
     if SettingsConfigDict is not None:
         model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

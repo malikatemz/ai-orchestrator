@@ -6,12 +6,12 @@ import time
 from datetime import datetime
 from typing import Optional, List
 
-from .config import get_settings
-from .database import SessionLocal
-from .models import Task, TaskStatus, UsageRecord
-from .agents.router import select_agent, record_provider_usage, get_fallback_chain
-from .providers.executor import execute_task, TaskExecutionError
-from .audit import log_event
+from ..app.config import get_settings
+from ..app.database import SessionLocal
+from ..app.models import Task, TaskStatus, UsageRecord
+from ..app.agents.router import select_agent, record_provider_usage, get_fallback_chain
+from ..app.providers.executor import execute_task, TaskExecutionError
+from ..app.audit import log_event
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -234,7 +234,7 @@ def cleanup_old_tasks():
 def calculate_daily_metrics():
     """Calculate and cache daily metrics"""
     from sqlalchemy import func
-    from .models import TaskStatus
+    from ..app.models import TaskStatus
     
     db = SessionLocal()
     try:

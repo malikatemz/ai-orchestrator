@@ -15,6 +15,7 @@ from .error_handling import ApiError, ErrorCode, ErrorSeverity
 from .observability import configure_logging, initialize_sentry
 from .rate_limiter import maybe_rate_limit
 from .routes import router
+from .routes_billing import router as billing_router
 from .services import seed_demo_data
 
 initialize_sentry()
@@ -111,3 +112,4 @@ def on_startup() -> None:
 
 
 app.include_router(router)
+app.include_router(billing_router)

@@ -3,9 +3,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import json
+import stripe
+import logging
 
 from ..database import get_db
-from ..auth import require_permission
+from ..config import get_settings
 from ..billing import (
     create_checkout_session,
     handle_checkout_completed,
@@ -14,11 +16,14 @@ from ..billing import (
     get_usage_for_period,
     check_subscription_active,
 )
-from ..models import Organization, UserRole
+from ..models import Organization, UsageRecord
 from ..schemas import CheckoutSessionRequest, CheckoutSessionResponse, UsageResponse
 from .api_auth import get_current_user
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["billing"])
+
+settings = get_settings()
 
 
 @router.post("/checkout", response_model=CheckoutSessionResponse)
@@ -63,22 +68,50 @@ async def stripe_webhook(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """Handle Stripe webhooks"""
+    """
+    Handle Stripe webhooks with signature verification.
     
-    payload = await request.json()
-    event_type = payload.get("type")
+    Webhook signature is verified using Stripe's signing secret.
+    Only processes if signature is valid.
+    """
+    
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+    
+    if not sig_header:
+        logger.warning("Stripe webhook missing signature header")
+        return {"status": "error", "message": "Missing signature"}, 403
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload,
+            sig_header,
+            settings.stripe_webhook_secret,
+        )
+    except ValueError as e:
+        logger.warning(f"Invalid payload: {str(e)}")
+        return {"status": "error", "message": "Invalid payload"}, 400
+    except stripe.error.SignatureVerificationError as e:
+        logger.warning(f"Invalid signature: {str(e)}")
+        return {"status": "error", "message": "Invalid signature"}, 400
+    
+    event_type = event.get("type")
     
     try:
         if event_type == "checkout.session.completed":
-            handle_checkout_completed(db, payload)
+            handle_checkout_completed(db, event)
         
         elif event_type == "invoice.payment_failed":
-            handle_invoice_payment_failed(db, payload)
+            handle_invoice_payment_failed(db, event)
         
         elif event_type == "customer.subscription.deleted":
-            handle_subscription_deleted(db, payload)
+            handle_subscription_deleted(db, event)
+        
+        else:
+            logger.debug(f"Unhandled event type: {event_type}")
     
     except Exception as e:
+        logger.error(f"Error handling webhook {event_type}: {str(e)}")
         return {"status": "error", "message": str(e)}, 400
     
     return {"status": "success"}

@@ -71,6 +71,47 @@ class AuditLog(Base):
             return {}
 
 
+class Organization(Base):
+    """Organization with billing and subscription info"""
+    __tablename__ = "organizations"
+
+    id = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    email = Column(String, nullable=False, unique=True, index=True)
+    stripe_customer_id = Column(String, nullable=True, unique=True, index=True)
+    subscription_plan = Column(String, default="starter", nullable=False)
+    subscription_status = Column(String, default="trialing", nullable=False, index=True)
+    subscription_item_id = Column(String, nullable=True)
+    trial_ends_at = Column(DateTime(timezone=True), nullable=True)
+    billing_cycle_anchor = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    usage_records = relationship("UsageRecord", back_populates="organization", cascade="all, delete-orphan")
+
+
+class UsageRecord(Base):
+    """API usage tracking for billing"""
+    __tablename__ = "usage_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    org_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    task_id = Column(Integer, nullable=True, index=True)
+    usage_type = Column(String, default="task_execution", nullable=False, index=True)
+    quantity = Column(Integer, default=1, nullable=False)
+    metadata_json = Column(Text, nullable=True, default="{}")
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+
+    organization = relationship("Organization", back_populates="usage_records")
+
+    @property
+    def metadata(self) -> dict:
+        try:
+            return json.loads(self.metadata_json or "{}")
+        except json.JSONDecodeError:
+            return {}
+
+
 def count_records(db: Session, model) -> int:
     return db.query(model).count()
 
