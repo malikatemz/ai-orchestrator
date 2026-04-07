@@ -19,7 +19,14 @@ from app.config import get_settings
 @pytest.fixture
 def test_user(test_db):
     """Create a test user with MEMBER role."""
-    org = Organization(name="Test Org", slug="test-org")
+    import uuid
+    org_id = str(uuid.uuid4())
+    org = Organization(
+        id=org_id,
+        name="Test Org",
+        slug="test-org",
+        email="test-org@example.com"
+    )
     test_db.add(org)
     test_db.commit()
     
@@ -40,7 +47,14 @@ def test_user(test_db):
 @pytest.fixture
 def admin_user(test_db):
     """Create a test admin user."""
-    org = Organization(name="Admin Org", slug="admin-org")
+    import uuid
+    org_id = str(uuid.uuid4())
+    org = Organization(
+        id=org_id,
+        name="Admin Org",
+        slug="admin-org",
+        email="admin-org@example.com"
+    )
     test_db.add(org)
     test_db.commit()
     
