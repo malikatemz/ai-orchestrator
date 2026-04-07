@@ -17,19 +17,7 @@ $routesAuthFile = "$projectRoot\backend\app\routes_auth.py"
 if (Test-Path $routesAuthFile) {
     $content = Get-Content $routesAuthFile -Raw
     
-    # Fix the first set of imports (lines 8-10)
-    $oldPattern = @"
-from `.\`database import get_db
-from `.\`auth.oauth import google_redirect_url, google_callback, github_redirect_url, github_callback, get_saml_metadata
-from `.\`auth.tokens import create_access_token, create_refresh_token, refresh_access_token
-"@
-    
-    $newPattern = @"
-from .database import get_db
-from .auth.oauth import google_redirect_url, google_callback, github_redirect_url, github_callback, get_saml_metadata
-from .auth.tokens import create_access_token, create_refresh_token, refresh_access_token
-"@
-    
+    # Fix the import paths to use correct relative imports
     if ($content -match "from `\.\.database") {
         $content = $content -replace "from `\.\.database import get_db", "from .database import get_db"
         $content = $content -replace "from `\.\.auth\.oauth import", "from .auth.oauth import"

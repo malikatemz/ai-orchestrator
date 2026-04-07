@@ -37,7 +37,7 @@ function Test-Phase {
             return $false
         }
     } catch {
-        Write-Host "❌ $Phase - $TestName: $_" -ForegroundColor Red
+        Write-Host "❌ $Phase - $TestName`: $($_)" -ForegroundColor Red
         $results += @{Phase=$Phase; Test=$TestName; Status="ERROR"}
         return $false
     }

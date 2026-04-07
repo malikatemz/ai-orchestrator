@@ -247,13 +247,6 @@ def run_task(self, task_id: int, attempt: int = 0, failed_providers: list = None
     
     finally:
         db.close()
-                queue_name=task.queue_name,
-                retry_count=task.retries,
-                error=str(exc),
-            )
-        return {"status": "failed", "error": str(exc), "code": ErrorCode.TASK_RETRY_EXHAUSTED}
-    finally:
-        db.close()
 
 
 def queue_task(task_id: int, queue_name: str = "default") -> str:

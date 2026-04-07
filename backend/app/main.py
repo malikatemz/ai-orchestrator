@@ -6,7 +6,6 @@ import uuid
 import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import settings
@@ -17,6 +16,7 @@ from .rate_limiter import maybe_rate_limit
 from .routes import router
 from .routes_billing import router as billing_router
 from .services import seed_demo_data
+from .security import configure_security
 
 initialize_sentry()
 logger = configure_logging()
@@ -42,13 +42,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, version="1.1.0", lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.allowed_origins_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Configure security (CORS, headers, etc.)
+configure_security(app, settings)
 
 
 @app.middleware("http")

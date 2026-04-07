@@ -105,7 +105,8 @@ class UsageRecord(Base):
     organization = relationship("Organization", back_populates="usage_records")
 
     @property
-    def metadata(self) -> dict:
+    def meta(self) -> dict:
+        """Parse metadata JSON string into dictionary"""
         try:
             return json.loads(self.metadata_json or "{}")
         except json.JSONDecodeError:
