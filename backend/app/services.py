@@ -198,13 +198,51 @@ def assert_workflow_owner(workflow: models.Workflow, user: dict[str, Any]) -> No
         )
 
 
-def get_accessible_workflows(db: Session, user: Dict[str, Any]) -> List[models.Workflow]:
+def get_accessible_workflows(db: Session, user: dict[str, Any]) -> list[models.Workflow]:
+    """Get all workflows accessible to user.
+    
+    Access rules:
+    - Admin/demo users: All workflows
+    - Regular users: Only workflows they own
+    
+    Args:
+        db: Database session
+        user: User context with 'sub' field
+        
+    Returns:
+        List of Workflow objects visible to user
+        
+    Example:
+        >>> user = {"sub": "user-123"}
+        >>> workflows = get_accessible_workflows(db, user)
+        >>> len(workflows)
+        3
+    """
     if settings.public_demo_mode or is_admin(user):
         return repositories.list_workflows(db)
     return repositories.list_workflows_for_owner(db, user["sub"])
 
 
 def queue_name_for_priority(priority: str) -> str:
+    """Map workflow priority to Celery queue name.
+    
+    Queue selection affects task processing latency:
+    - high_priority: Urgent/critical tasks (SLA < 30s)
+    - default: Standard tasks (SLA < 5min)
+    - low_cost: Background tasks (best-effort, cost optimized)
+    
+    Args:
+        priority: Workflow priority level ('critical', 'high', 'medium', 'low')
+        
+    Returns:
+        Queue name for Celery task routing
+        
+    Example:
+        >>> queue_name_for_priority("critical")
+        "high_priority"
+        >>> queue_name_for_priority("low")
+        "low_cost"
+    """
     if priority in {"critical", "high"}:
         return "high_priority"
     if priority == "low":
@@ -212,7 +250,35 @@ def queue_name_for_priority(priority: str) -> str:
     return "default"
 
 
-def calculate_metrics(tasks: List[models.Task]) -> Dict[str, Any]:
+def calculate_metrics(tasks: list[models.Task]) -> dict[str, Any]:
+    """Calculate workflow execution metrics.
+    
+    Computes basic statistics about task execution:
+    - Total count by status (completed, failed, running)
+    - Success rate (completed / (completed + failed))
+    
+    Args:
+        tasks: List of Task records to analyze
+        
+    Returns:
+        Dictionary with metrics:
+        - workflows: Number of unique workflows (always 0, computed elsewhere)
+        - tasks: Total task count
+        - running: Tasks currently executing
+        - completed: Tasks that succeeded
+        - failed: Tasks that failed
+        - success_rate: (completed / finished) * 100, or 100 if no finished tasks
+        
+    Example:
+        >>> tasks = [
+        ...     Task(status="completed"),
+        ...     Task(status="completed"),
+        ...     Task(status="failed"),
+        ... ]
+        >>> metrics = calculate_metrics(tasks)
+        >>> metrics["success_rate"]
+        66.7
+    """
     completed = sum(task.status == "completed" for task in tasks)
     failed = sum(task.status == "failed" for task in tasks)
     total_finished = completed + failed
