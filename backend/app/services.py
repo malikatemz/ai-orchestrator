@@ -378,7 +378,49 @@ def record_audit_event(
     )
 
 
-def create_and_queue_task(db: Session, workflow_id: int, task_payload, queue_func, *, actor: str):
+def create_and_queue_task(
+    db: Session,
+    workflow_id: int,
+    task_payload: Any,
+    queue_func: Any,
+    *,
+    actor: str,
+) -> tuple[models.Task, str]:
+    """Create a new task and queue it for execution.
+    
+    Steps:
+    1. Fetch and validate workflow exists
+    2. Determine queue (priority-based routing)
+    3. Create Task record in database
+    4. Queue task in Celery
+    5. Record audit log
+    
+    Args:
+        db: Database session
+        workflow_id: Parent workflow ID
+        task_payload: TaskCreateRequest with name, input, agent
+        queue_func: Callback to queue task (returns queue_mode string)
+        actor: User ID queueing the task
+        
+    Returns:
+        Tuple of (created_task, queue_mode) where:
+        - created_task: Task record with ID, timestamps
+        - queue_mode: Result from queue_func indicating queue state
+        
+    Raises:
+        ApiError: 404 if workflow not found
+        
+    Example:
+        >>> task, mode = create_and_queue_task(
+        ...     db,
+        ...     workflow_id=1,
+        ...     task_payload=TaskCreateRequest(...),
+        ...     queue_func=lambda id, qname: "queued",
+        ...     actor="user-123"
+        ... )
+        >>> task.status
+        "pending"
+    """
     workflow = repositories.get_workflow(db, workflow_id)
     validate_workflow_exists(workflow, workflow_id)
 
@@ -405,7 +447,48 @@ def create_and_queue_task(db: Session, workflow_id: int, task_payload, queue_fun
     return task, queue_mode
 
 
-def retry_task(db: Session, task_id: int, queue_func, *, actor: str):
+def retry_task(
+    db: Session,
+    task_id: int,
+    queue_func: Any,
+    *,
+    actor: str,
+) -> tuple[models.Task, str]:
+    """Retry a failed task.
+    
+    Creates a new task linked to original via source_task_id.
+    Only failed tasks can be retried.
+    
+    Steps:
+    1. Fetch and validate task exists
+    2. Validate task status is 'failed'
+    3. Create new task with source_task_id
+    4. Queue in Celery
+    5. Record audit log
+    
+    Args:
+        db: Database session
+        task_id: ID of failed task to retry
+        queue_func: Callback to queue task
+        actor: User ID requesting retry
+        
+    Returns:
+        Tuple of (retried_task, queue_mode)
+        
+    Raises:
+        ApiError: 404 if task not found
+        ApiError: 409 if task status is not 'failed'
+        
+    Example:
+        >>> retried_task, mode = retry_task(
+        ...     db,
+        ...     task_id=1,
+        ...     queue_func=...,
+        ...     actor="user-123"
+        ... )
+        >>> retried_task.source_task_id
+        1
+    """
     task = repositories.get_task(db, task_id)
     validate_task_exists(task, task_id)
 
@@ -450,7 +533,25 @@ def retry_task(db: Session, task_id: int, queue_func, *, actor: str):
     return retried_task, queue_mode
 
 
-def create_demo_workflows(db: Session) -> List[models.Workflow]:
+def create_demo_workflows(db: Session) -> list[models.Workflow]:
+    """Create demo workflows for public demo mode.
+    
+    Generates 3 example workflows showing typical use cases:
+    1. Customer Escalation Triage - Support ops use case
+    2. Growth Experiment Factory - Product/growth use case
+    3. Release Readiness Review - Engineering use case
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        List of created Workflow objects
+        
+    Example:
+        >>> workflows = create_demo_workflows(db)
+        >>> workflows[0].name
+        "Customer Escalation Triage"
+    """
     workflows = [
         models.Workflow(
             name="Customer Escalation Triage",
