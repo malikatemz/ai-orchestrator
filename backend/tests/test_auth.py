@@ -108,6 +108,7 @@ class TestTokens:
         assert isinstance(token, str)
         
         # Verify it can be decoded (with correct token_type)
+        # Verify it can be decoded
         decoded = tokens.decode_token(token, token_type="refresh")
         assert decoded["sub"] == str(test_user.id)
         assert decoded["type"] == "refresh"
@@ -177,6 +178,7 @@ class TestGoogleOAuth:
         }
         
         mock_post_response = AsyncMock()
+        mock_post_response = MagicMock()
         mock_post_response.json.return_value = {
             "access_token": "google_token",
             "token_type": "Bearer",
@@ -191,6 +193,16 @@ class TestGoogleOAuth:
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_post_response
         mock_client.get.return_value = mock_get_response
+        # raise_for_status should be a regular method, not async
+        mock_post_response.raise_for_status = MagicMock(return_value=None)
+        
+        mock_get_response = MagicMock()
+        mock_get_response.json.return_value = mock_user_info
+        mock_get_response.raise_for_status = MagicMock(return_value=None)
+        
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_post_response)
+        mock_client.get = AsyncMock(return_value=mock_get_response)
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
         
@@ -232,6 +244,7 @@ class TestGitHubOAuth:
         }
         
         mock_post_response = AsyncMock()
+        mock_post_response = MagicMock()
         mock_post_response.json.return_value = {
             "access_token": "github_token",
             "token_type": "bearer",
@@ -246,6 +259,16 @@ class TestGitHubOAuth:
         mock_client = AsyncMock()
         mock_client.post.return_value = mock_post_response
         mock_client.get.return_value = mock_get_response
+        # raise_for_status should be a regular method, not async
+        mock_post_response.raise_for_status = MagicMock(return_value=None)
+        
+        mock_get_response = MagicMock()
+        mock_get_response.json.return_value = mock_user_info
+        mock_get_response.raise_for_status = MagicMock(return_value=None)
+        
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_post_response)
+        mock_client.get = AsyncMock(return_value=mock_get_response)
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
         
