@@ -137,3 +137,26 @@ class ErrorEnvelopeItem(BaseModel):
 class ErrorResponse(BaseModel):
     error: ErrorEnvelopeItem
     request_id: str
+
+
+class CheckoutSessionRequest(BaseModel):
+    """Request to create a checkout session for billing."""
+    price_id: str
+    success_url: str
+    cancel_url: str
+    customer_email: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
+
+
+class CheckoutSessionResponse(BaseModel):
+    """Response containing checkout session URL."""
+    checkout_url: str
+    session_id: str
+
+
+class UsageResponse(BaseModel):
+    """Response containing usage metrics."""
+    period_start: datetime
+    period_end: datetime
+    usage_amount: float
+    unit: str

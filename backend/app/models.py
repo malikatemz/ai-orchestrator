@@ -1,13 +1,45 @@
 from __future__ import annotations
 
 import json
+from enum import Enum
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, Boolean, Enum as SQLEnum
 from sqlalchemy.orm import Session, declarative_base, relationship
 
 from .time_utils import utc_now
 
 Base = declarative_base()
+
+
+class UserRole(str, Enum):
+    """User roles for RBAC."""
+    OWNER = "owner"
+    ADMIN = "admin"
+    MEMBER = "member"
+    VIEWER = "viewer"
+    BILLING_ADMIN = "billing_admin"
+
+
+class User(Base):
+    """User model for authentication and authorization"""
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    full_name = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    picture_url = Column(String, nullable=True)
+    oauth_provider = Column(String, nullable=True)  # 'google', 'github', etc.
+    oauth_id = Column(String, nullable=True, unique=True, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_admin = Column(Boolean, default=False, nullable=False)
+    role = Column(SQLEnum(UserRole), default=UserRole.MEMBER, nullable=False)
+    org_id = Column(String, ForeignKey("organizations.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+
+    organization = relationship("Organization", back_populates="users")
 
 
 class Workflow(Base):
@@ -77,6 +109,7 @@ class Organization(Base):
 
     id = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
+    slug = Column(String, nullable=False, unique=True, index=True)
     email = Column(String, nullable=False, unique=True, index=True)
     stripe_customer_id = Column(String, nullable=True, unique=True, index=True)
     subscription_plan = Column(String, default="starter", nullable=False)
@@ -87,6 +120,7 @@ class Organization(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
+    users = relationship("User", back_populates="organization", cascade="all, delete-orphan")
     usage_records = relationship("UsageRecord", back_populates="organization", cascade="all, delete-orphan")
 
 

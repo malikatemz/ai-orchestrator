@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from statistics import mean
-from typing import Any, Dict, List
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -14,15 +14,64 @@ SYSTEM_ACTOR = "system"
 DEMO_ACTOR = "demo-guest"
 
 
-def is_admin(user: Dict[str, Any]) -> bool:
+def is_admin(user: dict[str, Any]) -> bool:
+    """Check if user has admin privileges.
+    
+    Admin users can be identified by:
+    1. Having 'admin' as their sub (user ID)
+    2. Having 'orchestrator:admin' in their scopes list
+    
+    Args:
+        user: User context dictionary with 'sub' and optional 'scopes'
+        
+    Returns:
+        True if user is admin, False otherwise
+        
+    Example:
+        >>> user = {"sub": "admin"}
+        >>> is_admin(user)
+        True
+    """
     return user.get("sub") == "admin" or "orchestrator:admin" in user.get("scopes", [])
 
 
-def can_manage_demo(user: Dict[str, Any]) -> bool:
+def can_manage_demo(user: dict[str, Any]) -> bool:
+    """Check if user can manage demo data.
+    
+    Demo management is allowed if:
+    1. Public demo mode is enabled (any user can manage)
+    2. User is an admin
+    
+    Args:
+        user: User context dictionary
+        
+    Returns:
+        True if user can manage demo, False otherwise
+        
+    Example:
+        >>> user = {"sub": "user-123", "scopes": ["orchestrator:admin"]}
+        >>> can_manage_demo(user)
+        True
+    """
     return settings.public_demo_mode or is_admin(user)
 
 
-def ensure_ops_access(user: Dict[str, Any]) -> None:
+def ensure_ops_access(user: dict[str, Any]) -> None:
+    """Validate user has access to operations endpoints.
+    
+    Operations endpoints (metrics, debugging) are restricted to admins.
+    In public demo mode, all users have ops access.
+    
+    Args:
+        user: User context dictionary
+        
+    Raises:
+        ApiError: If user lacks ops access (status 403)
+        
+    Example:
+        >>> user = {"sub": "user-123"}
+        >>> ensure_ops_access(user)  # Raises ApiError in non-demo mode
+    """
     if settings.public_demo_mode or is_admin(user):
         return
     raise ApiError(
@@ -35,6 +84,29 @@ def ensure_ops_access(user: Dict[str, Any]) -> None:
 
 
 def build_app_config() -> dict[str, Any]:
+    """Build application configuration dictionary for frontend.
+    
+    Returns configuration state that affects UI behavior:
+    - App mode (production, staging, development)
+    - Demo mode status
+    - Authentication requirements
+    - Seeding capabilities
+    - Public URLs for API/app
+    
+    Returns:
+        Configuration dictionary with:
+        - app_mode: Deployment mode
+        - demo_mode: Whether in demo mode
+        - auth_required: Whether auth is mandatory
+        - demo_seed_enabled: Whether demo data can be seeded
+        - public_app_url: Public app base URL
+        - public_api_url: Public API base URL
+        
+    Example:
+        >>> config = build_app_config()
+        >>> config["app_mode"]
+        "production"
+    """
     return {
         "app_mode": settings.app_mode.value if hasattr(settings.app_mode, "value") else str(settings.app_mode),
         "demo_mode": settings.is_demo_mode,
@@ -45,7 +117,20 @@ def build_app_config() -> dict[str, Any]:
     }
 
 
-def validate_workflow_exists(workflow, workflow_id: int) -> None:
+def validate_workflow_exists(workflow: models.Workflow | None, workflow_id: int) -> None:
+    """Validate that a workflow exists.
+    
+    Args:
+        workflow: Workflow object from database (None if not found)
+        workflow_id: Expected workflow ID (for error message)
+        
+    Raises:
+        ApiError: 404 if workflow is None
+        
+    Example:
+        >>> workflow = db.query(Workflow).filter_by(id=123).first()
+        >>> validate_workflow_exists(workflow, 123)  # Raises if None
+    """
     if not workflow:
         raise ApiError(
             code=ErrorCode.WORKFLOW_NOT_FOUND,
@@ -57,7 +142,20 @@ def validate_workflow_exists(workflow, workflow_id: int) -> None:
         )
 
 
-def validate_task_exists(task, task_id: int) -> None:
+def validate_task_exists(task: models.Task | None, task_id: int) -> None:
+    """Validate that a task exists.
+    
+    Args:
+        task: Task object from database (None if not found)
+        task_id: Expected task ID (for error message)
+        
+    Raises:
+        ApiError: 404 if task is None
+        
+    Example:
+        >>> task = db.query(Task).filter_by(id=456).first()
+        >>> validate_task_exists(task, 456)  # Raises if None
+    """
     if not task:
         raise ApiError(
             code=ErrorCode.TASK_NOT_FOUND,
@@ -69,7 +167,24 @@ def validate_task_exists(task, task_id: int) -> None:
         )
 
 
-def assert_workflow_owner(workflow: models.Workflow, user: Dict[str, Any]) -> None:
+def assert_workflow_owner(workflow: models.Workflow, user: dict[str, Any]) -> None:
+    """Verify user owns the workflow.
+    
+    In demo mode or for admins, ownership is not enforced.
+    For regular users, the workflow.owner must match user ID.
+    
+    Args:
+        workflow: Workflow record
+        user: User context with 'sub' field
+        
+    Raises:
+        ApiError: 403 if user doesn't own workflow (unless admin/demo)
+        
+    Example:
+        >>> workflow = db.query(Workflow).filter_by(id=1).first()
+        >>> user = {"sub": "user-123"}
+        >>> assert_workflow_owner(workflow, user)  # Raises if user != owner
+    """
     if settings.public_demo_mode or is_admin(user):
         return
     if workflow.owner != user.get("sub"):
