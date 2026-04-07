@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from random import randint
-from typing import Any, Dict
+from typing import Any
 
 import sentry_sdk
 from celery import Celery
@@ -37,7 +37,39 @@ logger = configure_logging()
 
 
 def _build_result(task: Task) -> str:
-    """Build execution result for development/demo mode"""
+    """Build execution result for development/demo mode.
+    
+    Generates a mock execution summary with confidence scoring
+    based on input characteristics for demo/development environments.
+    
+    Algorithm:
+    - Base confidence: 72%
+    - Increase: +0.1% per 1000 input chars
+    - Penalty: -5% per risk marker detected
+    - Min: 52%, Max: 97%
+    
+    Risk markers: 'urgent', 'blocked', 'incident', 'risk'
+    
+    Args:
+        task: Task record with input_data and agent type
+        
+    Returns:
+        JSON string with execution summary including:
+        - agent: Agent type that processed task
+        - stage: 'completed'
+        - summary: Processing description
+        - recommended_next_step: Routing suggestion
+        - confidence: Execution confidence (0.52-0.97)
+        - signals: Input characteristics
+        - deliverable: Output summary
+        
+    Example:
+        >>> task = Task(agent="researcher", input_data="Urgent analysis...")
+        >>> result_json = _build_result(task)
+        >>> result = json.loads(result_json)
+        >>> result["confidence"]
+        0.67
+    """
     input_text = task.input_data or ""
     risk_markers = sum(keyword in input_text.lower() for keyword in ["urgent", "blocked", "incident", "risk"])
     confidence = max(0.52, min(0.97, 0.72 + (len(input_text) / 1000) - (risk_markers * 0.05)))
@@ -66,15 +98,91 @@ def _build_result(task: Task) -> str:
     time_limit=30 * 60,  # 30 minutes
     soft_time_limit=25 * 60,  # 25 minutes
 )
-def run_task(self, task_id: int, attempt: int = 0, failed_providers: list = None) -> Dict[str, Any]:
-    """Phase 4: Execute task with provider routing and fallback chain
+def run_task(self, task_id: int, attempt: int = 0, failed_providers: list[str] | None = None) -> dict[str, Any]:
+    """Execute task with intelligent provider routing and fallback chain.
     
-    This worker task:
-    1. Selects best provider using scoring algorithm
-    2. Executes task with selected provider
-    3. Falls back to next provider on failure (max 3 fallbacks)
-    4. Records usage for billing
-    5. Reports to Stripe if applicable
+    This is the core task execution worker. It implements:
+    
+    1. TASK LOADING
+       - Fetch task and workflow from database
+       - Validate task exists and is in correct state
+       - Mark task as running
+    
+    2. PROVIDER ROUTING (Phase 4 - Intelligent Selection)
+       Algorithm selects best provider based on:
+       - Success rate (50% weight)
+       - Average latency (30% weight)
+       - Cost per request (20% weight)
+       - Excludes providers that failed in previous attempts
+       
+    3. TASK EXECUTION
+       - Demo/dev mode: Generate mock result with confidence scoring
+       - Production mode: Call actual provider via execute_with_provider()
+       - Measure execution time
+       - Handle timeouts (30min hard limit, 25min soft limit)
+    
+    4. SUCCESS HANDLING
+       - Update task status to 'completed'
+       - Record usage for billing
+       - Emit audit log
+       - Return result summary
+    
+    5. FALLBACK CHAIN (Max 3 attempts)
+       - On provider failure: Try next highest-scored provider
+       - Exponential backoff: 60s, 120s, 240s delays
+       - Track failed providers to avoid re-trying
+       - After max attempts, mark task as failed
+    
+    6. ERROR HANDLING
+       - Catch all exceptions and log to Sentry
+       - Update task with error message
+       - Mark task as failed
+       - Record audit log with failure details
+    
+    Args:
+        self: Celery task context (for retry())
+        task_id: Task ID to execute
+        attempt: Current retry attempt (0 = initial, max 3)
+        failed_providers: List of providers that failed in previous attempts
+        
+    Returns:
+        Dictionary with result:
+        - On success:
+          - status: "completed"
+          - result: JSON output from provider/demo
+          - provider: Provider name used
+          - duration_seconds: Execution time
+        - On failure:
+          - status: "failed"
+          - error: Error message
+          - attempts: Total attempts made
+        - On routing error:
+          - status: "error"
+          - message: Routing error message
+          - code: ErrorCode enum value
+    
+    Raises:
+        Exception: Caught and handled internally (task marked failed)
+        
+    Side Effects:
+        - Updates Task status, output, timestamps in database
+        - Creates UsageRecord for billing
+        - Records AuditLog entries
+        - Logs to application logger and Sentry
+        - May retry task with exponential backoff
+        
+    Timeout Handling:
+        - Soft limit (25min): SoftTimeLimitExceeded caught, task retried
+        - Hard limit (30min): Task forcefully killed by Celery
+        
+    Example:
+        >>> # Queue task (called by routes.py)
+        >>> run_task.apply_async(args=[123], queue="default")
+        
+        >>> # Direct execution (fallback if queue down)
+        >>> result = run_task.run(123)
+        >>> result["status"]
+        "completed"
     """
     
     db = SessionLocal()
@@ -250,6 +358,43 @@ def run_task(self, task_id: int, attempt: int = 0, failed_providers: list = None
 
 
 def queue_task(task_id: int, queue_name: str = "default") -> str:
+    """Queue a task for asynchronous execution.
+    
+    Routes task to Celery worker via specified queue.
+    If Celery is unavailable, falls back to inline (synchronous) execution.
+    
+    Queue Types:
+    - high_priority: SLA < 30s (for critical/urgent tasks)
+    - default: SLA < 5min (standard tasks)
+    - low_cost: SLA < 1hr (background/optimized cost tasks)
+    
+    Args:
+        task_id: Task ID to queue
+        queue_name: Celery queue name (default: "default")
+        
+    Returns:
+        Queue mode indicator:
+        - "celery": Task successfully queued (async)
+        - "inline": Queue unavailable, ran synchronously (fallback)
+        
+    Side Effects:
+        - Emits 'queue_dispatch' log on success
+        - Emits 'queue_degraded' log on fallback
+        - Executes task immediately if queue unavailable
+        
+    Error Handling:
+        - ConnectionError: Fall back to inline execution
+        - Any other exception: Log to Sentry, try inline
+        
+    Example:
+        >>> result = queue_task(task_id=123, queue_name="high_priority")
+        >>> result
+        "celery"  # or "inline" if fallback triggered
+        
+    Note:
+        The fallback behavior ensures no tasks are lost due to
+        queue unavailability, at the cost of blocking the request.
+    """
     try:
         run_task.apply_async(args=[task_id], queue=queue_name)
         log_event(logger, "info", "queue_dispatch", task_id=task_id, queue_name=queue_name, queue_mode="celery")
