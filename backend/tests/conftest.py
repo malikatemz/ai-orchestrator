@@ -20,7 +20,18 @@ def reset_settings():
         "allowed_origins": settings.allowed_origins,
         "public_app_url": settings.public_app_url,
         "public_api_url": settings.public_api_url,
+        "google_client_id": settings.google_client_id,
+        "google_client_secret": settings.google_client_secret,
+        "github_client_id": settings.github_client_id,
+        "github_client_secret": settings.github_client_secret,
     }
+    
+    # Set test OAuth credentials immediately
+    settings.google_client_id = "test_google_client_id"
+    settings.google_client_secret = "test_google_client_secret"
+    settings.github_client_id = "test_github_client_id"
+    settings.github_client_secret = "test_github_client_secret"
+    
     yield
     for key, value in original.items():
         setattr(settings, key, value)

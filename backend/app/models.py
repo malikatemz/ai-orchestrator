@@ -21,7 +21,53 @@ class UserRole(str, Enum):
 
 
 class User(Base):
-    """User model for authentication and authorization"""
+    """User model for authentication and authorization.
+    
+    Represents a user account with OAuth integration, RBAC role assignments, and organization
+    membership. Users authenticate via OAuth2 providers (Google, GitHub) or local password auth.
+    Each user belongs to exactly one organization and can have multiple roles for fine-grained
+    access control.
+    
+    Attributes:
+        id: Unique user identifier (UUID or OAuth user ID)
+        email: Email address (unique, indexed for fast lookup)
+        full_name: Display name from OAuth provider or manual entry
+        hashed_password: Bcrypt-hashed password (nullable for OAuth-only users)
+        picture_url: Profile picture URL from OAuth provider
+        oauth_provider: OAuth provider name ('google', 'github', etc.) or None for local auth
+        oauth_id: OAuth provider's user ID (unique per provider)
+        is_active: Soft delete flag (false = deactivated, true = active)
+        is_admin: Platform admin flag (true = bypass all org-level permissions)
+        role: RBAC role (owner/admin/member/viewer/billing_admin)
+        org_id: Foreign key to Organization (nullable for pending org assignment)
+        created_at: Account creation timestamp (UTC)
+        updated_at: Last modification timestamp (UTC, auto-updated)
+        last_login_at: Last successful login timestamp or None if never logged in
+    
+    Relationships:
+        organization: Back-reference to parent Organization. Cascade: all, delete-orphan
+            (user deletion cascades but org deletion does NOT delete users).
+    
+    Indexes:
+        - email (unique): Fast email lookup for authentication
+        - oauth_id (unique): Fast OAuth user lookup
+        - org_id: Fast user lookup by organization
+        - is_active: Soft delete filtering
+    
+    Example:
+        >>> user = User(
+        ...     id="user-abc123",
+        ...     email="alice@example.com",
+        ...     full_name="Alice Smith",
+        ...     hashed_password="$2b$12$...",
+        ...     role=UserRole.OWNER,
+        ...     org_id="org-123"
+        ... )
+        >>> session.add(user)
+        >>> session.commit()
+        >>> user.organization.name
+        'Acme Inc'
+    """
     __tablename__ = "users"
 
     id = Column(String, primary_key=True, index=True)
@@ -43,6 +89,56 @@ class User(Base):
 
 
 class Workflow(Base):
+    """Workflow orchestration model for multi-step AI task execution.
+    
+    A Workflow represents a reusable template for executing multi-step AI-assisted processes.
+    It defines the DAG structure, target LLM model, and execution priority. Each workflow can be
+    instantiated multiple times through Task records, allowing users to execute the same workflow
+    with different inputs.
+    
+    Workflow Status States:
+        active: Workflow is available for task execution (default)
+        paused: No new tasks are accepted (scheduled maintenance)
+        archived: Soft-deleted, visible in history but no new tasks
+        draft: In-progress definition, not yet executable
+    
+    Attributes:
+        id: Primary key (auto-increment integer)
+        name: Workflow display name (indexed for search/sort)
+        description: Long-form description of workflow purpose
+        owner: User ID of workflow creator (default: "operations" for system workflows)
+        status: Current workflow state (active/paused/archived/draft)
+        priority: Default task priority (high/medium/low) - used when queueing tasks
+        target_model: Default LLM model for this workflow (gpt-4.1-mini, claude-3-opus, etc.)
+        created_at: Workflow creation timestamp (UTC, indexed)
+        updated_at: Last modification timestamp (UTC, auto-updated)
+        last_run_at: Most recent task completion timestamp, or None if never executed
+    
+    Relationships:
+        tasks: One-to-Many relationship to Task records.
+            Cascade: all, delete-orphan
+            When workflow is deleted, all associated tasks are deleted automatically.
+            Inverse: Task.workflow
+    
+    Indexes:
+        - name: Fast workflow lookup by name
+        - owner: Fast lookup of user's workflows
+        - created_at: Chronological sorting
+        - status: Quick filtering by state
+    
+    Example:
+        >>> workflow = Workflow(
+        ...     name="Email Summarizer",
+        ...     description="Summarize incoming emails using Claude",
+        ...     owner="user-123",
+        ...     priority="high",
+        ...     target_model="claude-3-opus-20240229"
+        ... )
+        >>> session.add(workflow)
+        >>> session.commit()
+        >>> task = Task(workflow_id=workflow.id, name="Summarize inbox")
+        >>> session.add(task)
+    """
     __tablename__ = "workflows"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -60,6 +156,68 @@ class Workflow(Base):
 
 
 class Task(Base):
+    """Task execution record for a workflow instance.
+    
+    A Task represents a single execution instance of a Workflow. It tracks the complete
+    execution lifecycle from submission through completion, including input data, output results,
+    error messages, and retry history. Tasks are queued in Celery for async execution with
+    automatic fallback to inline execution if Celery is unavailable.
+    
+    Task Status Lifecycle:
+        pending → queued → running → succeeded (or failed/retrying)
+        Stages: queued → started → processing → completed
+        Queues: default, high_priority, low_cost (determines execution order)
+    
+    Attributes:
+        id: Primary key (auto-increment)
+        workflow_id: Foreign key to Workflow (not nullable, indexed for fast lookup)
+        source_task_id: Self-referential foreign key for retry chains (nullable)
+            Set when this task is a retry of a previous task.
+        name: Task display name or description
+        agent: AI agent type (planner, executor, reviewer, etc.)
+        stage: Current execution stage (queued/started/processing/completed)
+        status: Task outcome (pending/running/succeeded/failed/retrying)
+        queue_name: Celery queue assignment (default/high_priority/low_cost)
+        input_data: JSON-serialized task inputs (max size varies by queue)
+        output_data: JSON-serialized task results (null until completion)
+        error_message: Error description if task failed (null on success)
+        retries: Number of retry attempts made (0 for first attempt)
+        duration_seconds: Task execution time (wall-clock seconds, null if not completed)
+        created_at: Task submission timestamp (UTC, indexed for sorting)
+        started_at: Execution start timestamp (null if not yet started)
+        completed_at: Execution end timestamp (null if still running)
+        updated_at: Last status change timestamp (UTC, auto-updated)
+    
+    Relationships:
+        workflow: Back-reference to parent Workflow (many-to-one)
+            Inverse: Workflow.tasks
+        source_task: Self-referential relationship for retry chains
+            Links this task to the task it's retrying (null for first attempt)
+    
+    Indexes:
+        - workflow_id: Fast lookup of workflow's tasks
+        - source_task_id: Fast lookup of retry chains
+        - status: Quick filtering by outcome
+        - created_at: Chronological sorting
+        - updated_at: Quick retrieval of recently modified tasks
+    
+    Example:
+        >>> task = Task(
+        ...     workflow_id=workflow.id,
+        ...     name="Process quarterly report",
+        ...     agent="executor",
+        ...     status="pending",
+        ...     input_data='{"report": "Q1-2026", "format": "markdown"}',
+        ...     queue_name="high_priority"
+        ... )
+        >>> session.add(task)
+        >>> session.commit()
+        >>> # Later, after execution
+        >>> task.status = "succeeded"
+        >>> task.output_data = '{"summary": "....", "insights": [...]}'
+        >>> task.completed_at = utc_now()
+        >>> session.commit()
+    """
     __tablename__ = "tasks"
 
     id = Column(Integer, primary_key=True, index=True)
