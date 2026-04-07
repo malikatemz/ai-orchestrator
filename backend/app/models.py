@@ -156,11 +156,16 @@ class Workflow(Base):
     latency_threshold_ms = Column(Integer, default=30000, nullable=False)  # Max latency in ms (30s default)
     prefer_providers = Column(Text, nullable=True)  # JSON-serialized list of preferred provider IDs
     
+    # Week 3 Multi-Tenant Support
+    workspace_id = Column(String, nullable=True, index=True)  # Workspace this workflow belongs to
+    created_by = Column(String, ForeignKey("users.id"), nullable=True)  # User who created this workflow
+    
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
     last_run_at = Column(DateTime(timezone=True), nullable=True)
 
     tasks = relationship("Task", back_populates="workflow", cascade="all, delete-orphan")
+    creator = relationship("User", foreign_keys=[created_by])
 
 
 class Task(Base):
@@ -248,6 +253,10 @@ class Task(Base):
     execution_latency_ms = Column(Integer, nullable=True)  # Actual latency in milliseconds
     tokens_used = Column(Integer, nullable=True)  # Total tokens consumed
     
+    # Week 3 Multi-Tenant Support
+    workspace_id = Column(String, nullable=True, index=True)  # Workspace this task belongs to
+    executed_by = Column(String, ForeignKey("users.id"), nullable=True)  # User who triggered execution
+    
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
@@ -255,6 +264,7 @@ class Task(Base):
 
     workflow = relationship("Workflow", back_populates="tasks")
     source_task = relationship("Task", remote_side=[id], uselist=False)
+    executor = relationship("User", foreign_keys=[executed_by])
 
 
 class AuditLog(Base):
@@ -328,7 +338,14 @@ class AuditLog(Base):
     resource_type = Column(String, nullable=False, index=True)
     resource_id = Column(Integer, nullable=True, index=True)
     details_json = Column(Text, nullable=False, default="{}")
+    
+    # Week 3 User Context
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)  # User who performed action
+    workspace_id = Column(String, nullable=True, index=True)  # Workspace where action occurred
+    
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    
+    user = relationship("User", foreign_keys=[user_id])
 
     @property
     def details(self) -> dict:
@@ -531,6 +548,138 @@ class UsageRecord(Base):
             return json.loads(self.metadata_json or "{}")
         except json.JSONDecodeError:
             return {}
+
+
+class WorkspaceRole(str, Enum):
+    """Workspace-level roles for fine-grained RBAC.
+    
+    Extends global UserRole with workspace-specific permissions.
+    Users can have different roles in different workspaces.
+    """
+    OWNER = "owner"      # Full control within workspace
+    ADMIN = "admin"      # Administrative access
+    OPERATOR = "operator"  # Can execute tasks and manage workflows
+    VIEWER = "viewer"    # Read-only access
+
+
+class Workspace(Base):
+    """Workspace for team collaboration and organization.
+    
+    A Workspace represents a logical group of workflows, tasks, and team members.
+    Users can belong to multiple workspaces with different roles in each.
+    Each workspace has its own set of workflows, tasks, and API keys.
+    
+    Attributes:
+        id: Primary key (UUID or auto-increment)
+        name: Workspace display name
+        description: Workspace description
+        organization_id: Optional reference to parent Organization
+        created_by: User ID of workspace creator
+        created_at: Workspace creation timestamp
+        updated_at: Last modification timestamp
+    
+    Relationships:
+        members: WorkspaceUser junction table (users in this workspace)
+        workflows: Workflows owned by this workspace
+        tasks: Tasks executed in this workspace
+        api_keys: API keys for this workspace
+    
+    Example:
+        >>> workspace = Workspace(
+        ...     name="Engineering Team",
+        ...     description="Engineering workflows",
+        ...     created_by="user-123"
+        ... )
+        >>> session.add(workspace)
+        >>> session.commit()
+    """
+    __tablename__ = "workspaces"
+    
+    id = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=True, index=True)
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+    
+    members = relationship("WorkspaceUser", back_populates="workspace", cascade="all, delete-orphan")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class WorkspaceUser(Base):
+    """Junction table for User + Workspace + Role relationship.
+    
+    Represents a user's membership in a workspace with a specific role.
+    Users can have different roles across different workspaces.
+    
+    Attributes:
+        id: Primary key
+        user_id: Foreign key to User
+        workspace_id: Foreign key to Workspace
+        role: User's role in this workspace (owner, admin, operator, viewer)
+        created_at: Membership creation timestamp
+    
+    Example:
+        >>> member = WorkspaceUser(
+        ...     user_id="user-123",
+        ...     workspace_id="ws-456",
+        ...     role=WorkspaceRole.OPERATOR
+        ... )
+        >>> session.add(member)
+        >>> session.commit()
+    """
+    __tablename__ = "workspace_users"
+    
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    workspace_id = Column(String, ForeignKey("workspaces.id"), nullable=False, index=True)
+    role = Column(SQLEnum(WorkspaceRole), default=WorkspaceRole.VIEWER, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    
+    workspace = relationship("Workspace", back_populates="members")
+    user = relationship("User")
+
+
+class APIKey(Base):
+    """API key for programmatic access to workspace.
+    
+    Allows users to generate API keys for automation and integrations.
+    API keys are stored as hashes (plaintext only shown at generation time).
+    
+    Attributes:
+        id: Primary key (UUID)
+        user_id: Foreign key to User (key owner)
+        workspace_id: Foreign key to Workspace (key scope)
+        name: Human-readable key name
+        key_hash: Bcrypt hash of the API key (plaintext never stored)
+        last_used_at: Last successful API call timestamp
+        created_at: Key generation timestamp
+        expires_at: Optional key expiration date
+    
+    Example:
+        >>> key = APIKey(
+        ...     user_id="user-123",
+        ...     workspace_id="ws-456",
+        ...     name="CI/CD Pipeline",
+        ...     key_hash="$2b$12$...",
+        ... )
+        >>> session.add(key)
+        >>> session.commit()
+    """
+    __tablename__ = "api_keys"
+    
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    workspace_id = Column(String, ForeignKey("workspaces.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    key_hash = Column(String, nullable=False, unique=True, index=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    
+    user = relationship("User")
+    workspace = relationship("Workspace")
 
 
 def count_records(db: Session, model: type) -> int:
