@@ -1,0 +1,214 @@
+---
+# ServiceMonitor for Prometheus
+# Enables Prometheus to scrape metrics from API and Worker pods
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-orchestrator-api-metrics
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: api
+    prometheus: kube-prometheus
+  annotations:
+    description: "Prometheus metrics collection for API service"
+spec:
+  selector:
+    matchLabels:
+      app: ai-orchestrator
+      component: api
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    scheme: http
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+---
+# ServiceMonitor for Worker Metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-orchestrator-worker-metrics
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: worker
+    prometheus: kube-prometheus
+  annotations:
+    description: "Prometheus metrics collection for worker service"
+spec:
+  selector:
+    matchLabels:
+      app: ai-orchestrator
+      component: worker
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    scheme: http
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod
+    - sourceLabels: [__meta_kubernetes_pod_node_name]
+      targetLabel: node
+---
+# PrometheusRule - Alert Rules for AI Orchestrator
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ai-orchestrator-alerts
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    prometheus: kube-prometheus
+  annotations:
+    description: "Alert rules for AI Orchestrator platform"
+spec:
+  groups:
+  - name: ai_orchestrator
+    interval: 30s
+    rules:
+    
+    # API Service Alerts
+    - alert: APIHighErrorRate
+      expr: |
+        (sum(rate(http_requests_total{job="ai-orchestrator-api",status=~"5.."}[5m])) 
+         / sum(rate(http_requests_total{job="ai-orchestrator-api"}[5m]))) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+        component: api
+      annotations:
+        summary: "High error rate detected in API"
+        description: "API error rate is {{ $value | humanizePercentage }} over 5 minutes"
+    
+    - alert: APIHighLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="ai-orchestrator-api"}[5m])) by (le)) > 1
+      for: 5m
+      labels:
+        severity: warning
+        component: api
+      annotations:
+        summary: "High latency detected in API"
+        description: "API p95 latency is {{ $value | humanizeDuration }} over 5 minutes"
+    
+    # Worker Alerts
+    - alert: WorkerQueueDepthHigh
+      expr: |
+        celery_queue_length{queue="default"} > 1000
+      for: 5m
+      labels:
+        severity: warning
+        component: worker
+      annotations:
+        summary: "High queue depth in Celery"
+        description: "Queue depth is {{ $value | humanize }} tasks"
+    
+    - alert: WorkerProcessMissing
+      expr: |
+        up{job="ai-orchestrator-worker"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        component: worker
+      annotations:
+        summary: "Worker pod is down"
+        description: "Worker pod {{ $labels.pod }} is not responding"
+    
+    # Pod Health Alerts
+    - alert: PodCrashLoop
+      expr: |
+        rate(kube_pod_container_status_restarts_total{namespace="ai-orchestrator-prod"}[15m]) > 0.1
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Pod is in crash loop"
+        description: "Pod {{ $labels.pod }} is restarting frequently"
+    
+    - alert: PodNotReady
+      expr: |
+        sum by (pod) (kube_pod_status_phase{namespace="ai-orchestrator-prod",phase=~"Pending|Unknown"}) > 0
+      for: 15m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Pod is not ready"
+        description: "Pod {{ $labels.pod }} has been pending for 15 minutes"
+    
+    # Node Alerts
+    - alert: NodeNotReady
+      expr: |
+        kube_node_status_condition{condition="Ready",status="true"} == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Kubernetes node is not ready"
+        description: "Node {{ $labels.node }} is not ready"
+    
+    # Resource Alerts
+    - alert: HighMemoryUsage
+      expr: |
+        (sum(container_memory_working_set_bytes{namespace="ai-orchestrator-prod"}) 
+         / sum(kube_pod_container_resource_limits{namespace="ai-orchestrator-prod",resource="memory"})) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High memory usage detected"
+        description: "Memory usage is {{ $value | humanizePercentage }}"
+    
+    - alert: HighCPUUsage
+      expr: |
+        (sum(rate(container_cpu_usage_seconds_total{namespace="ai-orchestrator-prod"}[5m])) 
+         / sum(kube_pod_container_resource_limits{namespace="ai-orchestrator-prod",resource="cpu"})) > 0.85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High CPU usage detected"
+        description: "CPU usage is {{ $value | humanizePercentage }}"
+    
+    # Database Alerts
+    - alert: DatabaseConnectionPoolExhausted
+      expr: |
+        pg_stat_activity_count{namespace="ai-orchestrator-prod"} >= 90
+      for: 5m
+      labels:
+        severity: critical
+        component: database
+      annotations:
+        summary: "Database connection pool nearly full"
+        description: "Active connections: {{ $value }}"
+    
+    # Cache Alerts
+    - alert: RedisCacheHighMemory
+      expr: |
+        redis_memory_used_bytes{namespace="ai-orchestrator-prod"} / redis_memory_max_bytes > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        component: cache
+      annotations:
+        summary: "Redis memory usage is high"
+        description: "Memory usage is {{ $value | humanizePercentage }}"
+    
+    # SLA Alerts
+    - alert: APIAvailabilityLow
+      expr: |
+        (sum(rate(http_requests_total{job="ai-orchestrator-api",status="200"}[5m])) 
+         / sum(rate(http_requests_total{job="ai-orchestrator-api"}[5m]))) < 0.99
+      for: 10m
+      labels:
+        severity: critical
+      annotations:
+        summary: "API availability below SLA"
+        description: "Availability is {{ $value | humanizePercentage }}"

@@ -1,0 +1,148 @@
+---
+# API Service - ClusterIP
+# Exposes the API deployment internally and allows external access via Ingress
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-orchestrator-api
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: api
+    tier: application
+  annotations:
+    description: "ClusterIP service for API deployment"
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: ai-orchestrator
+    component: api
+---
+# Worker Service - Headless for discovery
+# Allows workers to discover each other for coordination
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-orchestrator-worker
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: worker
+    tier: application
+  annotations:
+    description: "Headless service for worker discovery"
+spec:
+  clusterIP: None  # Headless service
+  ports:
+  - name: metrics
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: ai-orchestrator
+    component: worker
+---
+# PostgreSQL Service
+# Connects to the PostgreSQL StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: database
+    type: postgres
+  annotations:
+    description: "Service for PostgreSQL database"
+spec:
+  type: ClusterIP
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: 5432
+    protocol: TCP
+  selector:
+    app: ai-orchestrator
+    component: database
+    type: postgres
+---
+# Redis Service
+# Connects to the Redis StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: cache
+    type: redis
+  annotations:
+    description: "Service for Redis cache and Celery broker"
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  selector:
+    app: ai-orchestrator
+    component: cache
+    type: redis
+---
+# PostgreSQL Headless Service
+# Used by StatefulSet for discovery and networking
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: database
+    type: postgres
+  annotations:
+    description: "Headless service for PostgreSQL StatefulSet"
+spec:
+  clusterIP: None  # Headless service
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: 5432
+    protocol: TCP
+  selector:
+    app: ai-orchestrator
+    component: database
+    type: postgres
+---
+# Redis Headless Service
+# Used by StatefulSet for discovery and networking
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: cache
+    type: redis
+  annotations:
+    description: "Headless service for Redis StatefulSet"
+spec:
+  clusterIP: None  # Headless service
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  selector:
+    app: ai-orchestrator
+    component: cache
+    type: redis

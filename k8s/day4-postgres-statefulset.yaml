@@ -1,0 +1,283 @@
+---
+# PostgreSQL StatefulSet
+# Production-grade PostgreSQL deployment with persistent storage,
+# health checks, replication config, and backup integration
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: database
+    type: postgres
+    version: "15"
+  annotations:
+    description: "PostgreSQL 15 database for AI Orchestrator"
+spec:
+  serviceName: postgres-headless
+  replicas: 1  # Set to 3 for HA with replication
+  selector:
+    matchLabels:
+      app: ai-orchestrator
+      component: database
+      type: postgres
+  template:
+    metadata:
+      labels:
+        app: ai-orchestrator
+        component: database
+        type: postgres
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 60
+      
+      securityContext:
+        fsGroup: 999
+      
+      # Init container for setup
+      initContainers:
+      - name: init-postgres
+        image: postgres:15-alpine
+        command:
+        - sh
+        - -c
+        - |
+          mkdir -p /var/lib/postgresql/data
+          chmod 700 /var/lib/postgresql/data
+          chown 999:999 /var/lib/postgresql/data
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+      
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        
+        ports:
+        - name: postgresql
+          containerPort: 5432
+          protocol: TCP
+        
+        # Environment variables
+        env:
+        - name: POSTGRES_DB
+          value: ai_orchestrator
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: ai-orchestrator-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ai-orchestrator-secrets
+              key: POSTGRES_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        
+        # Resource limits
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+        
+        # Liveness probe
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Readiness probe
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Security context
+        securityContext:
+          runAsUser: 999
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        
+        # Volume mounts
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-config
+          mountPath: /etc/postgresql
+          readOnly: true
+        - name: postgres-init
+          mountPath: /docker-entrypoint-initdb.d
+        - name: backup-scripts
+          mountPath: /backup
+      
+      # Volumes
+      volumes:
+      - name: postgres-config
+        configMap:
+          name: postgres-config
+          optional: true
+      - name: postgres-init
+        configMap:
+          name: postgres-init-scripts
+          optional: true
+          defaultMode: 0755
+      - name: backup-scripts
+        configMap:
+          name: postgres-backup-scripts
+          optional: true
+          defaultMode: 0755
+  
+  # Volume claim template for persistent storage
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+      labels:
+        app: ai-orchestrator
+        component: database
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: standard
+      resources:
+        requests:
+          storage: 100Gi
+---
+# PostgreSQL Configuration ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: database
+data:
+  postgresql.conf: |
+    # Connection settings
+    listen_addresses = '*'
+    max_connections = 200
+    
+    # Memory settings
+    shared_buffers = 256MB
+    effective_cache_size = 1GB
+    work_mem = 64MB
+    maintenance_work_mem = 64MB
+    
+    # Query planning
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    
+    # Logging
+    log_min_duration_statement = 1000
+    log_connections = on
+    log_disconnections = on
+    log_statement = 'ddl'
+    log_duration = off
+    
+    # WAL settings (for replication)
+    wal_level = replica
+    max_wal_senders = 10
+    max_replication_slots = 10
+    wal_keep_segments = 64
+    
+    # Checkpoints
+    checkpoint_timeout = 15min
+    checkpoint_completion_target = 0.9
+    
+    # Lock management
+    deadlock_timeout = 1s
+    
+    # Client connection defaults
+    datestyle = 'iso, mdy'
+    timezone = 'UTC'
+  
+  pg_hba.conf: |
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+    local   all             all                                     trust
+    host    all             all             127.0.0.1/32            md5
+    host    all             all             ::1/128                 md5
+    host    replication     all             0.0.0.0/0               md5
+    host    replication     all             ::/0                    md5
+---
+# PostgreSQL Init Scripts ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: database
+data:
+  01-init.sql: |
+    -- Create extensions
+    CREATE EXTENSION IF NOT EXISTS uuid-ossp;
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE EXTENSION IF NOT EXISTS hstore;
+    
+    -- Grant privileges
+    GRANT ALL PRIVILEGES ON DATABASE ai_orchestrator TO postgres;
+    ALTER ROLE postgres WITH PASSWORD :'POSTGRES_PASSWORD';
+---
+# PostgreSQL Backup Scripts ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-backup-scripts
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: database
+data:
+  backup.sh: |
+    #!/bin/bash
+    set -e
+    
+    BACKUP_DIR="/backups"
+    DB_NAME="ai_orchestrator"
+    DB_USER="postgres"
+    DB_HOST="postgres-headless"
+    DB_PORT="5432"
+    BACKUP_FILE="$BACKUP_DIR/backup-$(date +%Y%m%d-%H%M%S).sql.gz"
+    
+    mkdir -p "$BACKUP_DIR"
+    
+    echo "Starting backup of $DB_NAME..."
+    PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump \
+      -h "$DB_HOST" \
+      -p "$DB_PORT" \
+      -U "$DB_USER" \
+      -d "$DB_NAME" \
+      --format=custom \
+      | gzip > "$BACKUP_FILE"
+    
+    echo "Backup completed: $BACKUP_FILE"
+    
+    # Optional: Upload to S3
+    # aws s3 cp "$BACKUP_FILE" "s3://ai-orchestrator-backups/"
+    
+    # Keep only last 30 days
+    find "$BACKUP_DIR" -name "backup-*.sql.gz" -mtime +30 -delete

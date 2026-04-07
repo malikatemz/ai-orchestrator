@@ -1,0 +1,236 @@
+---
+# Worker Deployment - Celery Worker Processes
+# Production-grade deployment for async task processing with
+# comprehensive health checks, pod anti-affinity, and resource management.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-orchestrator-worker
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: worker
+    tier: application
+    version: v1
+  annotations:
+    description: "Celery worker for async task processing"
+    managed-by: "kubernetes"
+spec:
+  replicas: 2  # Will be scaled by KEDA based on queue depth
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: ai-orchestrator
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: ai-orchestrator
+        component: worker
+        tier: application
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: worker-service-account
+      terminationGracePeriodSeconds: 60
+      
+      # Security context for pod
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      
+      # Init containers for setup
+      initContainers:
+        - name: wait-for-dependencies
+          image: busybox:1.35
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "Waiting for database..."
+              until nc -z postgres-service 5432; do
+                echo "Database unavailable - sleeping"
+                sleep 2
+              done
+              echo "Database is up!"
+              
+              echo "Waiting for Redis/Celery Broker..."
+              until nc -z redis-service 6379; do
+                echo "Redis unavailable - sleeping"
+                sleep 2
+              done
+              echo "Redis is up!"
+
+      containers:
+      - name: worker
+        image: ai-orchestrator:latest
+        imagePullPolicy: Always
+        
+        ports:
+        - name: metrics
+          containerPort: 8000
+          protocol: TCP
+        
+        # Environment variables from ConfigMap
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: ai-orchestrator-config
+              key: ENVIRONMENT
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: ai-orchestrator-config
+              key: LOG_LEVEL
+        - name: WORKER_CONCURRENCY
+          valueFrom:
+            configMapKeyRef:
+              name: ai-orchestrator-config
+              key: WORKER_CONCURRENCY
+        - name: WORKER_PREFETCH_MULTIPLIER
+          valueFrom:
+            configMapKeyRef:
+              name: ai-orchestrator-config
+              key: WORKER_PREFETCH_MULTIPLIER
+        - name: DATABASE_POOL_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: ai-orchestrator-config
+              key: DATABASE_POOL_SIZE
+        - name: DATABASE_POOL_RECYCLE
+          valueFrom:
+            configMapKeyRef:
+              name: ai-orchestrator-config
+              key: DATABASE_POOL_RECYCLE
+        
+        # Environment variables from Secrets
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: ai-orchestrator-secrets
+              key: DATABASE_URL
+        - name: CELERY_BROKER_URL
+          valueFrom:
+            secretKeyRef:
+              name: ai-orchestrator-secrets
+              key: CELERY_BROKER_URL
+        - name: CELERY_RESULT_BACKEND
+          valueFrom:
+            secretKeyRef:
+              name: ai-orchestrator-secrets
+              key: CELERY_RESULT_BACKEND
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-orchestrator-secrets
+              key: OPENAI_API_KEY
+              optional: true
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-orchestrator-secrets
+              key: ANTHROPIC_API_KEY
+              optional: true
+        
+        # Command override - launch Celery worker
+        command:
+          - "celery"
+          - "-A"
+          - "app.worker"
+          - "worker"
+          - "--loglevel=info"
+          - "--concurrency=$(WORKER_CONCURRENCY)"
+          - "--prefetch-multiplier=$(WORKER_PREFETCH_MULTIPLIER)"
+        
+        # Resource management - workers are compute intensive
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+        
+        # Liveness probe - check if worker process is running
+        livenessProbe:
+          exec:
+            command:
+              - "sh"
+              - "-c"
+              - "ps aux | grep -q '[c]elery'"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        # Readiness probe - check if worker is accepting tasks
+        readinessProbe:
+          exec:
+            command:
+              - "sh"
+              - "-c"
+              - "celery -A app.worker inspect active || exit 1"
+          initialDelaySeconds: 20
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        # Security context for container
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+              - ALL
+        
+        # Volume mounts
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/.cache
+      
+      # Volumes
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+      
+      # Pod anti-affinity to spread workers across nodes
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          # Prefer different nodes (soft requirement)
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - ai-orchestrator
+                - key: component
+                  operator: In
+                  values:
+                  - worker
+              topologyKey: kubernetes.io/hostname
+      
+      # Topology spread - ensure even distribution across zones
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: ai-orchestrator
+            component: worker

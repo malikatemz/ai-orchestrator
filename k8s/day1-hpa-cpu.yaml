@@ -1,0 +1,67 @@
+---
+# Horizontal Pod Autoscaler for API Service
+# Scales API deployment based on CPU utilization
+# Target: 50% CPU utilization with min 2 and max 10 replicas
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-orchestrator-api-hpa
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: api
+    type: autoscaler
+  annotations:
+    description: "CPU-based horizontal pod autoscaler for API service"
+spec:
+  # Reference to the target deployment
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-orchestrator-api
+  
+  # Replica limits
+  minReplicas: 2
+  maxReplicas: 10
+  
+  # Metrics configuration
+  metrics:
+  # CPU-based scaling metric
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50  # Scale when CPU > 50%
+  
+  # Memory-based scaling metric (fallback)
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70  # Scale when memory > 70%
+  
+  # Behavior configuration
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100  # Double the replicas
+        periodSeconds: 60  # Per minute
+      - type: Pods
+        value: 4  # Add max 4 pods
+        periodSeconds: 60
+      selectPolicy: Max  # Use the policy that scales up the most
+    
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      policies:
+      - type: Percent
+        value: 50  # Reduce by 50%
+        periodSeconds: 60  # Per minute
+      - type: Pods
+        value: 2  # Remove max 2 pods
+        periodSeconds: 60
+      selectPolicy: Min  # Use the policy that scales down the least

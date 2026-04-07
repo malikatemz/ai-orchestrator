@@ -1,0 +1,254 @@
+---
+# Network Policy: Allow API Ingress Traffic
+# Permits traffic from ingress controller to API service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-ingress
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: api
+    type: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-orchestrator
+      component: api
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow from ingress-nginx controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+  # Allow from same namespace (for health checks)
+  - from:
+    - podSelector:
+        matchLabels:
+          app: ai-orchestrator
+    ports:
+    - protocol: TCP
+      port: 8000
+---
+# Network Policy: API to Database Connection
+# Permits API pods to connect to PostgreSQL
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-postgres
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: api
+    type: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-orchestrator
+      component: api
+  policyTypes:
+  - Egress
+  egress:
+  # Allow to PostgreSQL
+  - to:
+    - podSelector:
+        matchLabels:
+          app: ai-orchestrator
+          component: database
+          type: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: ai-orchestrator
+          component: cache
+          type: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow DNS
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow external HTTPS (for API calls)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 169.254.169.254/32  # Block AWS metadata service
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+---
+# Network Policy: Worker to Database Connection
+# Permits worker pods to connect to PostgreSQL and Redis
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-worker-to-database
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: worker
+    type: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-orchestrator
+      component: worker
+  policyTypes:
+  - Egress
+  egress:
+  # Allow to PostgreSQL
+  - to:
+    - podSelector:
+        matchLabels:
+          app: ai-orchestrator
+          component: database
+          type: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow to Redis (broker and result backend)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: ai-orchestrator
+          component: cache
+          type: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow inter-worker communication
+  - to:
+    - podSelector:
+        matchLabels:
+          app: ai-orchestrator
+          component: worker
+    ports:
+    - protocol: TCP
+      port: 8000
+  # Allow DNS
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow external HTTPS (for API calls)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 169.254.169.254/32
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+---
+# Network Policy: Database Ingress
+# Permits connections to PostgreSQL only from authorized pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-ingress
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: database
+    type: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-orchestrator
+      component: database
+      type: postgres
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow from API
+  - from:
+    - podSelector:
+        matchLabels:
+          app: ai-orchestrator
+          component: api
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow from Workers
+  - from:
+    - podSelector:
+        matchLabels:
+          app: ai-orchestrator
+          component: worker
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+# Network Policy: Redis Ingress
+# Permits connections to Redis only from authorized pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-ingress
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: cache
+    type: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-orchestrator
+      component: cache
+      type: redis
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow from API
+  - from:
+    - podSelector:
+        matchLabels:
+          app: ai-orchestrator
+          component: api
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow from Workers
+  - from:
+    - podSelector:
+        matchLabels:
+          app: ai-orchestrator
+          component: worker
+    ports:
+    - protocol: TCP
+      port: 6379
+---
+# Network Policy: Deny All by Default
+# Explicit deny-all policy to enforce zero-trust networking
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    type: network-policy
+spec:
+  podSelector:
+    matchLabels: {}
+  policyTypes:
+  - Ingress
+  - Egress

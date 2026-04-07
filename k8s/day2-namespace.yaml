@@ -1,0 +1,135 @@
+---
+# Kubernetes Namespaces with Resource Quotas
+# Creates three environments: dev, staging, and prod
+# Each with appropriate resource limits and network policies
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-orchestrator-dev
+  labels:
+    environment: development
+    managed-by: ai-orchestrator
+    isolation-level: low
+  annotations:
+    description: "Development environment for AI Orchestrator"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-orchestrator-staging
+  labels:
+    environment: staging
+    managed-by: ai-orchestrator
+    isolation-level: medium
+  annotations:
+    description: "Staging environment for AI Orchestrator"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-orchestrator-prod
+  labels:
+    environment: production
+    managed-by: ai-orchestrator
+    isolation-level: high
+  annotations:
+    description: "Production environment for AI Orchestrator"
+---
+# Resource Quota for Development
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ai-orchestrator-dev-quota
+  namespace: ai-orchestrator-dev
+spec:
+  hard:
+    requests.cpu: "10"
+    requests.memory: "20Gi"
+    limits.cpu: "20"
+    limits.memory: "40Gi"
+    pods: "50"
+    services: "10"
+    persistentvolumeclaims: "5"
+  scopeSelector:
+    matchExpressions:
+    - operator: In
+      scopeName: PriorityClass
+      values: ["default", "low-priority"]
+---
+# Resource Quota for Staging
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ai-orchestrator-staging-quota
+  namespace: ai-orchestrator-staging
+spec:
+  hard:
+    requests.cpu: "50"
+    requests.memory: "100Gi"
+    limits.cpu: "100"
+    limits.memory: "200Gi"
+    pods: "200"
+    services: "50"
+    persistentvolumeclaims: "20"
+  scopeSelector:
+    matchExpressions:
+    - operator: In
+      scopeName: PriorityClass
+      values: ["default", "medium-priority"]
+---
+# Resource Quota for Production
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ai-orchestrator-prod-quota
+  namespace: ai-orchestrator-prod
+spec:
+  hard:
+    requests.cpu: "200"
+    requests.memory: "500Gi"
+    limits.cpu: "400"
+    limits.memory: "1000Gi"
+    pods: "500"
+    services: "100"
+    persistentvolumeclaims: "50"
+  scopeSelector:
+    matchExpressions:
+    - operator: In
+      scopeName: PriorityClass
+      values: ["default", "high-priority"]
+---
+# Network Policy - Default Deny All for Development
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: ai-orchestrator-dev
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# Network Policy - Default Deny All for Staging
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: ai-orchestrator-staging
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# Network Policy - Default Deny All for Production
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: ai-orchestrator-prod
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress

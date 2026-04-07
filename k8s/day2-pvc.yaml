@@ -1,0 +1,62 @@
+---
+# Persistent Volume Claims for AI Orchestrator
+# Provides persistent storage for database, cache, and logs
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: database
+    data-type: database
+  annotations:
+    description: "Storage for PostgreSQL database"
+spec:
+  accessModes:
+    - ReadWriteOnce  # Can only be mounted by one pod at a time
+  storageClassName: standard  # Use default storage class
+  resources:
+    requests:
+      storage: 100Gi
+---
+# Persistent Volume Claim for Redis
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: cache
+    data-type: cache
+  annotations:
+    description: "Storage for Redis cache with persistence (RDB+AOF)"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
+---
+# Persistent Volume Claim for Application Logs
+# Uses ReadWriteMany for access from multiple pods
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: logs-pvc
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: logging
+    data-type: logs
+  annotations:
+    description: "Shared storage for application logs"
+spec:
+  accessModes:
+    - ReadWriteMany  # Can be mounted by multiple pods
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 50Gi

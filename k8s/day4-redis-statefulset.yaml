@@ -1,0 +1,264 @@
+---
+# Redis StatefulSet
+# Production-grade Redis deployment with persistence (RDB + AOF),
+# health checks, and eviction policies
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: cache
+    type: redis
+    version: "7"
+  annotations:
+    description: "Redis 7 cache and Celery broker for AI Orchestrator"
+spec:
+  serviceName: redis-headless
+  replicas: 1  # Set to 3 for cluster mode
+  selector:
+    matchLabels:
+      app: ai-orchestrator
+      component: cache
+      type: redis
+  template:
+    metadata:
+      labels:
+        app: ai-orchestrator
+        component: cache
+        type: redis
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      
+      securityContext:
+        fsGroup: 999
+      
+      # Init container for setup
+      initContainers:
+      - name: init-redis
+        image: redis:7-alpine
+        command:
+        - sh
+        - -c
+        - |
+          mkdir -p /data
+          chmod 700 /data
+          chown 999:999 /data
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        
+        ports:
+        - name: redis
+          containerPort: 6379
+          protocol: TCP
+        
+        # Command override to use config file
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        
+        # Resource limits
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        
+        # Liveness probe
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Readiness probe
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Security context
+        securityContext:
+          runAsUser: 999
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        
+        # Volume mounts
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        - name: redis-config
+          mountPath: /etc/redis
+          readOnly: true
+      
+      # Volumes
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config
+  
+  # Volume claim template for persistent storage
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+      labels:
+        app: ai-orchestrator
+        component: cache
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: standard
+      resources:
+        requests:
+          storage: 10Gi
+---
+# Redis Configuration ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: cache
+data:
+  redis.conf: |
+    # Redis configuration for AI Orchestrator
+    
+    # Bind to all interfaces within pod
+    bind 0.0.0.0
+    
+    # TCP listen backlog
+    tcp-backlog 511
+    
+    # Close TCP connection after client idle
+    timeout 0
+    tcp-keepalive 300
+    
+    # Enable daemon mode (disabled in K8s)
+    daemonize no
+    
+    # Logging level
+    loglevel notice
+    
+    # Log file location
+    logfile ""
+    
+    # Database number
+    databases 16
+    
+    # Persistence - RDB snapshots
+    save ""  # Disable auto-save, use AOF instead
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+    
+    # AOF (Append-Only File) persistence
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    aof-load-truncated yes
+    aof-use-rdb-preamble yes
+    
+    # Replication
+    replica-serve-stale-data yes
+    replica-read-only yes
+    repl-diskless-sync no
+    repl-diskless-sync-delay 5
+    
+    # Security
+    requirepass ""  # Set via Secrets in pod spec
+    
+    # Clients
+    maxclients 10000
+    
+    # Memory management
+    maxmemory 2gb
+    maxmemory-policy allkeys-lru  # Evict least recently used keys
+    
+    # Lazy freeing
+    lazyfree-lazy-eviction no
+    lazyfree-lazy-expire no
+    lazyfree-lazy-server-del no
+    replica-lazy-flush no
+    
+    # Event notification
+    notify-keyspace-events ""
+    
+    # Hash table
+    hash-max-ziplist-entries 512
+    hash-max-ziplist-value 64
+    
+    # List compression
+    list-max-ziplist-size -2
+    list-compress-depth 0
+    
+    # Set
+    set-max-intset-entries 512
+    
+    # Sorted set
+    zset-max-ziplist-entries 128
+    zset-max-ziplist-value 64
+    
+    # HyperLogLog
+    hll-sparse-max-bytes 3000
+    
+    # Streams
+    stream-node-max-bytes 4096
+    stream-node-max-entries 100
+    
+    # Active rehashing
+    activerehashing yes
+    
+    # Client output buffer limits
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+    
+    # Frequency of sampling
+    hz 10
+    
+    # AOF rewrite increment fsync
+    dynamic-hz yes
+    
+    # Slow log
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+    
+    # Latency monitoring
+    latency-monitor-threshold 0
+    
+    # Lua script time limit
+    lua-time-limit 5000
+    
+    # Cluster (disabled for single node)
+    cluster-enabled no

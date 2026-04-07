@@ -1,0 +1,177 @@
+---
+# Database Backup CronJob
+# Scheduled backup of PostgreSQL database to S3/GCS
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: database
+    type: backup
+  annotations:
+    description: "Daily database backup to object storage"
+spec:
+  # Schedule: Daily at 2 AM UTC
+  schedule: "0 2 * * *"
+  
+  # Keep last 3 successful and last 1 failed job for reference
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app: ai-orchestrator
+            component: backup
+        spec:
+          serviceAccountName: postgres-backup
+          restartPolicy: OnFailure
+          
+          containers:
+          - name: backup
+            image: postgres:15-alpine
+            
+            env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ai-orchestrator-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ai-orchestrator-secrets
+                  key: POSTGRES_USER
+            - name: DB_NAME
+              value: ai_orchestrator
+            - name: DB_HOST
+              value: postgres-headless
+            - name: DB_PORT
+              value: "5432"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: ai-orchestrator-secrets
+                  key: AWS_ACCESS_KEY_ID
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-orchestrator-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+                  optional: true
+            - name: BACKUP_RETENTION_DAYS
+              value: "30"
+            
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Install required tools
+              apk add --no-cache aws-cli gzip curl
+              
+              # Set backup file name with timestamp
+              TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+              BACKUP_FILE="ai-orchestrator-db-${TIMESTAMP}.sql.gz"
+              BACKUP_BUCKET="s3://ai-orchestrator-backups"
+              
+              echo "Starting database backup..."
+              echo "Database: $DB_NAME"
+              echo "Host: $DB_HOST"
+              echo "Backup file: $BACKUP_FILE"
+              
+              # Create backup with timestamp
+              echo "Dumping database..."
+              PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump \
+                -h "${DB_HOST}" \
+                -p "${DB_PORT}" \
+                -U "${POSTGRES_USER}" \
+                -d "${DB_NAME}" \
+                --format=custom \
+                --compress=9 \
+                --jobs=4 \
+                --verbose 2>&1 | tee backup.sql
+              
+              # Compress the backup
+              echo "Compressing backup..."
+              gzip -9 backup.sql
+              
+              # Upload to S3 (if credentials provided)
+              if [ ! -z "$AWS_ACCESS_KEY_ID" ] && [ ! -z "$AWS_SECRET_ACCESS_KEY" ]; then
+                echo "Uploading to S3..."
+                aws s3 cp backup.sql.gz "${BACKUP_BUCKET}/${BACKUP_FILE}"
+                
+                if [ $? -eq 0 ]; then
+                  echo "Backup uploaded successfully to S3"
+                else
+                  echo "Warning: Failed to upload to S3"
+                fi
+              else
+                echo "AWS credentials not provided - skipping S3 upload"
+              fi
+              
+              # Generate backup info
+              BACKUP_SIZE=$(ls -lh backup.sql.gz | awk '{print $5}')
+              echo "Backup size: $BACKUP_SIZE"
+              echo "Backup completed at $(date)"
+              
+              # Verify backup integrity
+              echo "Verifying backup integrity..."
+              pg_restore --list backup.sql.gz > /dev/null 2>&1
+              if [ $? -eq 0 ]; then
+                echo "✓ Backup integrity check passed"
+              else
+                echo "✗ Backup integrity check failed"
+                exit 1
+              fi
+            
+            resources:
+              requests:
+                cpu: 500m
+                memory: 512Mi
+              limits:
+                cpu: 1000m
+                memory: 1Gi
+---
+# Service Account for Backup Job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres-backup
+  namespace: ai-orchestrator-prod
+  labels:
+    app: ai-orchestrator
+    component: database
+---
+# Role for Backup Job
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: postgres-backup
+  namespace: ai-orchestrator-prod
+spec:
+  rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["ai-orchestrator-secrets"]
+    verbs: ["get"]
+---
+# RoleBinding for Backup Job
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: postgres-backup
+  namespace: ai-orchestrator-prod
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: postgres-backup
+subjects:
+- kind: ServiceAccount
+  name: postgres-backup
+  namespace: ai-orchestrator-prod
