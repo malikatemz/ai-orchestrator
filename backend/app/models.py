@@ -243,6 +243,68 @@ class Task(Base):
 
 
 class AuditLog(Base):
+    """Immutable audit trail for compliance, debugging, and forensics.
+    
+    Records all significant system events (user actions, resource modifications, auth events,
+    errors) for compliance auditing, troubleshooting, and security analysis. Audit logs are
+    immutable (no updates, only inserts) and indexed by event type and creation time for fast
+    query and analysis.
+    
+    Audit Event Categories:
+        - User Actions: login, logout, create_task, delete_workflow, seed_demo_data
+        - Resource Changes: workflow_created, task_retried, settings_updated
+        - Auth Events: login_failed, permission_denied, token_expired
+        - System Events: task_failed, task_timeout, queue_backup_detected
+        - Admin Actions: user_deactivated, org_subscription_changed, billing_error
+    
+    Attributes:
+        id: Primary key (auto-increment, audit log identifier)
+        actor: User ID or system identifier initiating the action (default: "system")
+        event: Event type name (e.g., "workflow_created", "task_retried")
+            Used for filtering and reporting on specific event classes
+        resource_type: Resource being modified (workflow, task, user, organization)
+            Enables quick lookup of all changes to a specific resource type
+        resource_id: ID of affected resource (workflow_id, task_id, etc.) or null for system events
+        details_json: JSON object with event-specific context (max 10KB per event)
+            Examples:
+            - workflow_created: {priority: "high", target_model: "gpt-4"}
+            - task_retried: {source_task_id: 123, retry_reason: "timeout"}
+            - login_failed: {email: "user@...", reason: "invalid_password"}
+        created_at: Timestamp when event occurred (UTC, indexed for range queries)
+    
+    Relationships:
+        None (immutable, standalone records)
+    
+    Indexes:
+        - event (indexed): Quick filtering by event type
+        - resource_type (indexed): Lookup all changes to a resource type
+        - resource_id (indexed): Lookup all changes to a specific resource
+        - created_at (indexed): Date-range queries, sorting, pagination
+        - (actor, created_at): Composite index for "user's recent actions"
+    
+    Properties:
+        details: Parsed JSON dictionary of event-specific metadata.
+            Returns {} on JSON parse error (malformed JSON is gracefully handled).
+    
+    Example:
+        >>> audit = AuditLog(
+        ...     actor="user-123",
+        ...     event="task_retried",
+        ...     resource_type="task",
+        ...     resource_id=42,
+        ...     details_json='{"source_task_id": 41, "reason": "timeout"}'
+        ... )
+        >>> session.add(audit)
+        >>> session.commit()
+        >>> # Query: all workflow creations
+        >>> workflow_events = session.query(AuditLog).filter(
+        ...     AuditLog.event == "workflow_created"
+        ... ).all()
+        >>> # Query: all changes to a user
+        >>> user_changes = session.query(AuditLog).filter(
+        ...     (AuditLog.resource_type == "user") & (AuditLog.resource_id == 123)
+        ... ).all()
+    """
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -255,6 +317,18 @@ class AuditLog(Base):
 
     @property
     def details(self) -> dict:
+        """Parse details_json string into a Python dictionary.
+        
+        Returns:
+            Parsed JSON as dict. Returns empty {} if JSON is malformed or null.
+            Never raises JSONDecodeError (gracefully handles corrupted data).
+        
+        Example:
+            >>> audit = session.query(AuditLog).first()
+            >>> audit.details  # {"priority": "high", "model": "gpt-4"}
+            >>> audit.details.get("priority", "medium")
+            "high"
+        """
         try:
             return json.loads(self.details_json or "{}")
         except json.JSONDecodeError:
@@ -262,7 +336,72 @@ class AuditLog(Base):
 
 
 class Organization(Base):
-    """Organization with billing and subscription info"""
+    """Organization with billing and subscription management.
+    
+    Represents a multi-tenant organization with subscription plans, billing integration,
+    and user management. Each organization is isolated from others, with users and usage
+    tracked separately. Stripe integration enables self-serve subscription management,
+    trial periods, and usage-based billing.
+    
+    Subscription Plans:
+        starter: Free tier, limited usage, trial period only (no payment method required)
+        professional: Paid plan, standard usage limits, requires Stripe customer
+        enterprise: Custom limits, dedicated support, volume pricing
+    
+    Subscription Status:
+        trialing: In trial period (trial_ends_at is set, no payment method needed)
+        active: Paid subscription, current payment method valid
+        past_due: Payment failed, grace period active (will downgrade to free after 14 days)
+        canceled: User canceled, access revoked
+        incomplete: First payment pending (user added payment method but payment not processed)
+    
+    Attributes:
+        id: Primary key (unique organization identifier, typically UUID)
+        name: Organization display name
+        slug: URL-safe identifier for organization (e.g., "acme-corp", unique)
+        email: Organization contact email (unique, indexed)
+        stripe_customer_id: Stripe API customer ID for billing (unique, nullable for trial orgs)
+        subscription_plan: Current plan tier (starter/professional/enterprise)
+        subscription_status: Current payment status (trialing/active/past_due/canceled)
+        subscription_item_id: Stripe subscription item ID (for usage-based metering)
+        trial_ends_at: Trial expiration time (null if not in trial or trial expired)
+        billing_cycle_anchor: Stripe billing cycle start date (monthly anniversary)
+        created_at: Organization creation timestamp (UTC, indexed)
+        updated_at: Last modification timestamp (UTC, auto-updated)
+    
+    Relationships:
+        users: One-to-Many relationship to User records.
+            Cascade: all, delete-orphan
+            When organization is deleted, all users are deleted automatically.
+        usage_records: One-to-Many relationship to UsageRecord (billing/metering)
+            Cascade: all, delete-orphan
+            When organization is deleted, all usage records are deleted.
+    
+    Indexes:
+        - name: Fast org lookup by name
+        - slug (unique): URL route lookup, fast
+        - email (unique): Email-based org lookup
+        - stripe_customer_id (unique): Stripe webhook processing
+        - subscription_status: Query all orgs in "past_due" status (for dunning)
+        - created_at: Chronological sorting, cohort analysis
+    
+    Example:
+        >>> org = Organization(
+        ...     id="org-abc123",
+        ...     name="Acme Corporation",
+        ...     slug="acme-corp",
+        ...     email="billing@acme.com",
+        ...     subscription_plan="professional",
+        ...     subscription_status="active",
+        ...     stripe_customer_id="cus_1a2b3c4d5e6f7g"
+        ... )
+        >>> session.add(org)
+        >>> session.commit()
+        >>> # Add user to organization
+        >>> user = User(id="user-xyz", email="alice@acme.com", org_id=org.id)
+        >>> session.add(user)
+        >>> session.commit()
+    """
     __tablename__ = "organizations"
 
     id = Column(String, primary_key=True, index=True)
