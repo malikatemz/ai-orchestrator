@@ -82,9 +82,24 @@ def test_db(tmp_path, monkeypatch) -> Generator[Session, None, None]:
     engine = build_engine(f"sqlite:///{database_path}")
     session_factory = build_session(engine)
     init_db(engine)
+    
+    # Set test OAuth credentials
+    monkeypatch.setattr(settings, "google_client_id", "test_google_client_id")
+    monkeypatch.setattr(settings, "google_client_secret", "test_google_client_secret")
+    monkeypatch.setattr(settings, "github_client_id", "test_github_client_id")
+    monkeypatch.setattr(settings, "github_client_secret", "test_github_client_secret")
 
     db = session_factory()
     try:
         yield db
     finally:
         db.close()
+
+
+@pytest.fixture(autouse=True)
+def setup_oauth_credentials(monkeypatch):
+    """Set up test OAuth credentials for all tests."""
+    monkeypatch.setattr(settings, "google_client_id", "test_google_client_id")
+    monkeypatch.setattr(settings, "google_client_secret", "test_google_client_secret")
+    monkeypatch.setattr(settings, "github_client_id", "test_github_client_id")
+    monkeypatch.setattr(settings, "github_client_secret", "test_github_client_secret")

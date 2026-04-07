@@ -231,21 +231,25 @@ class TestGitHubOAuth:
             "avatar_url": "https://avatars.githubusercontent.com/u/12345"
         }
         
-        with patch("httpx.AsyncClient.post") as mock_post, \
-             patch("httpx.AsyncClient.get") as mock_get:
-            
-            # Mock token response
-            mock_post.return_value.json.return_value = {
-                "access_token": "github_token",
-                "token_type": "bearer",
-                "scope": "read:user,user:email"
-            }
-            mock_post.return_value.raise_for_status.return_value = None
-            
-            # Mock user info response
-            mock_get.return_value.json.return_value = mock_user_info
-            mock_get.return_value.raise_for_status.return_value = None
-            
+        mock_post_response = AsyncMock()
+        mock_post_response.json.return_value = {
+            "access_token": "github_token",
+            "token_type": "bearer",
+            "scope": "read:user,user:email"
+        }
+        mock_post_response.raise_for_status.return_value = None
+        
+        mock_get_response = AsyncMock()
+        mock_get_response.json.return_value = mock_user_info
+        mock_get_response.raise_for_status.return_value = None
+        
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_post_response
+        mock_client.get.return_value = mock_get_response
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        
+        with patch("httpx.AsyncClient", return_value=mock_client):
             result = await oauth.exchange_code("test_code")
             assert result is not None
             assert result["email"] == "user@github.com"
