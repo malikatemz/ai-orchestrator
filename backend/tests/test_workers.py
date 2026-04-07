@@ -47,7 +47,7 @@ class TestTaskExecution:
 class TestUsageTracking:
     """Test usage tracking and billing"""
 
-    def test_report_usage_organiza tion_not_found(self, test_db):
+    def test_report_usage_organization_not_found(self, test_db):
         """Handle missing organization"""
         result = report_usage_to_stripe.apply(args=["nonexistent_org"]).get()
         

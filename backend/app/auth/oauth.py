@@ -23,13 +23,16 @@ class OAuthError(Exception):
 # ============ Google OAuth ============
 
 class GoogleOAuth:
-    """Google OAuth2 flow"""
+    """Google OAuth2 flow - SECURITY: Uses configured redirect URIs, HTTPS only"""
     
     def __init__(self):
         self.settings = get_settings()
         self.client_id = self.settings.google_client_id
         self.client_secret = self.settings.google_client_secret
-        self.redirect_uri = "http://localhost:3000/auth/google/callback"  # Override in config
+        # SECURITY: Use configured redirect URI from environment
+        self.redirect_uri = self.settings.google_redirect_uri
+        if self.settings.is_production and not self.redirect_uri.startswith("https://"):
+            raise OAuthError("Google redirect URI must use HTTPS in production")
         self.auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
         self.token_url = "https://www.googleapis.com/oauth2/v4/token"
         self.userinfo_url = "https://www.googleapis.com/oauth2/v2/userinfo"
@@ -159,13 +162,16 @@ async def google_callback(
 # ============ GitHub OAuth ============
 
 class GitHubOAuth:
-    """GitHub OAuth2 flow"""
+    """GitHub OAuth2 flow - SECURITY: Uses configured redirect URIs, HTTPS only"""
     
     def __init__(self):
         self.settings = get_settings()
         self.client_id = self.settings.github_client_id
         self.client_secret = self.settings.github_client_secret
-        self.redirect_uri = "http://localhost:3000/auth/github/callback"  # Override in config
+        # SECURITY: Use configured redirect URI from environment
+        self.redirect_uri = self.settings.github_redirect_uri
+        if self.settings.is_production and not self.redirect_uri.startswith("https://"):
+            raise OAuthError("GitHub redirect URI must use HTTPS in production")
         self.auth_url = "https://github.com/login/oauth/authorize"
         self.token_url = "https://github.com/login/oauth/access_token"
         self.userinfo_url = "https://api.github.com/user"

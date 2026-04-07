@@ -17,6 +17,7 @@ from .routes import router
 from .routes_billing import router as billing_router
 from .services import seed_demo_data
 from .security import configure_security
+import redis
 
 initialize_sentry()
 logger = configure_logging()
@@ -25,6 +26,14 @@ def run_startup_tasks() -> None:
     settings.validate_runtime()
     if settings.should_auto_init_db:
         init_db()
+
+    # Test Redis connection for OAuth state storage
+    try:
+        redis_client = redis.from_url(settings.redis_url)
+        redis_client.ping()
+        logger.info("Redis connection successful - OAuth state tracking enabled")
+    except Exception as e:
+        logger.warning(f"Redis connection failed: {str(e)} - OAuth state tracking disabled")
 
     if settings.should_auto_seed_demo:
         db = SessionLocal()
