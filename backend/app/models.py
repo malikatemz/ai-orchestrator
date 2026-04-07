@@ -148,6 +148,14 @@ class Workflow(Base):
     status = Column(String, default="active", nullable=False)
     priority = Column(String, default="medium", nullable=False)
     target_model = Column(String, default="gpt-4.1-mini", nullable=False)
+    
+    # Week 2 Routing Configuration
+    routing_strategy = Column(String, default="balanced", nullable=False)  # cost/latency/accuracy/balanced
+    fallback_chain = Column(Text, nullable=True)  # JSON-serialized list of provider IDs
+    cost_threshold = Column(Float, default=10.0, nullable=False)  # Max cost per task in USD
+    latency_threshold_ms = Column(Integer, default=30000, nullable=False)  # Max latency in ms (30s default)
+    prefer_providers = Column(Text, nullable=True)  # JSON-serialized list of preferred provider IDs
+    
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
     last_run_at = Column(DateTime(timezone=True), nullable=True)
@@ -233,6 +241,13 @@ class Task(Base):
     error_message = Column(Text, nullable=True)
     retries = Column(Integer, default=0, nullable=False)
     duration_seconds = Column(Float, nullable=True)
+    
+    # Week 2 Provider Integration
+    executed_provider = Column(String, nullable=True)  # Provider ID that executed this task
+    execution_cost_usd = Column(Float, nullable=True)  # Actual cost in USD (from provider)
+    execution_latency_ms = Column(Integer, nullable=True)  # Actual latency in milliseconds
+    tokens_used = Column(Integer, nullable=True)  # Total tokens consumed
+    
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)

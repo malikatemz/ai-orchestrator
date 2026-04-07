@@ -214,51 +214,103 @@ def run_task(self, task_id: int, attempt: int = 0, failed_providers: list[str] |
         
         logger.info(f"Task {task_id} execution started (attempt {attempt + 1})")
         
-        # ===== PROVIDER ROUTING (Phase 4) =====
+        # ===== PROVIDER ROUTING (Week 2 - Intelligent Selection) =====
         try:
-            from .agents.router import route_task
+            import json
+            from .routing import RoutingEngine, RoutingStrategy, ExecutionMetadata
+            from .providers.registry import ProviderRegistry
             
-            provider_name = route_task(
-                db,
-                task_id,
-                attempt=attempt,
-                exclude_providers=failed_providers,
+            # Load routing configuration from workflow
+            routing_strategy = workflow.routing_strategy if workflow else "balanced"
+            fallback_chain = None
+            if workflow and workflow.fallback_chain:
+                try:
+                    fallback_chain = json.loads(workflow.fallback_chain)
+                except (json.JSONDecodeError, TypeError):
+                    fallback_chain = None
+            
+            prefer_providers = None
+            if workflow and workflow.prefer_providers:
+                try:
+                    prefer_providers = json.loads(workflow.prefer_providers)
+                except (json.JSONDecodeError, TypeError):
+                    prefer_providers = None
+            
+            # Create routing strategy with workflow configuration
+            strategy = RoutingStrategy(
+                strategy_type=routing_strategy,
+                fallback_chain=fallback_chain,
+                cost_threshold=workflow.cost_threshold if workflow else 10.0,
+                latency_threshold_ms=workflow.latency_threshold_ms if workflow else 30000,
+                prefer_providers=prefer_providers,
             )
-            logger.info(f"Task {task_id}: Selected provider {provider_name}")
+            
+            # Build execution metadata from task
+            metadata = ExecutionMetadata(
+                task_type=task.agent,
+                complexity="complex" if len(task.input_data) > 500 else "simple",
+                cost_sensitive=task.queue_name == "low_cost",
+                latency_sensitive=task.queue_name == "high_priority",
+                preferred_models=prefer_providers,
+                timeout_seconds=25 * 60,  # Soft limit
+            )
+            
+            # Use routing engine to select provider
+            router = RoutingEngine()
+            provider_id = router.select_provider(metadata, strategy)
+            
+            if not provider_id:
+                raise ValueError("No suitable provider found for task requirements")
+            
+            logger.info(f"Task {task_id}: Selected provider {provider_id} (strategy={routing_strategy}, attempt={attempt + 1})")
             
         except Exception as e:
             logger.error(f"Task {task_id}: Provider selection failed: {str(e)}")
             task.status = "failed"
             task.stage = "failed"
-            task.error_message = f"No provider available: {str(e)}"
+            task.error_message = f"Provider routing error: {str(e)}"
             task.completed_at = utc_now()
             db.commit()
             return {"status": "error", "message": str(e)}
         
         # ===== TASK EXECUTION =====
         start_time = utc_now()
+        provider_response = None
         
         try:
             # For production: use actual provider
             # For development: use mock result
             from .config import AppMode
+            from .providers.registry import ProviderRegistry
             
             if settings.app_mode == AppMode.DEMO or settings.app_mode == AppMode.DEVELOPMENT:
                 # Demo/development mode: return mock result
                 task.stage = "execution"
                 task.duration_seconds = round(randint(8, 42) / 10, 1)
                 task.output_data = _build_result(task)
+                task.executed_provider = provider_id
+                task.execution_latency_ms = int(task.duration_seconds * 1000)
+                task.tokens_used = len(task.input_data.split()) * 18  # Rough estimation
+                task.execution_cost_usd = task.tokens_used / 1000 * 0.001  # Mock cost
                 result_success = True
             else:
-                # Production: use actual provider
-                from .agents.executor import execute_with_provider
+                # Production: use actual provider from registry
+                registry = ProviderRegistry.instance()
+                provider = registry.get_provider(provider_id)
                 
-                result = execute_with_provider(
-                    provider_name,
-                    task.input_data,
-                    max_tokens=2000,
-                )
-                task.output_data = str(result.get("output", ""))
+                if not provider:
+                    raise ValueError(f"Provider {provider_id} not found in registry")
+                
+                # Execute task with provider
+                provider_response = await provider.execute(task.input_data, metadata)
+                
+                # Record provider metrics
+                task.executed_provider = provider_id
+                task.output_data = provider_response.output
+                task.tokens_used = provider_response.tokens_used
+                task.execution_cost_usd = provider_response.cost_usd
+                task.execution_latency_ms = int(provider_response.latency_seconds * 1000)
+                
                 duration = (utc_now() - start_time).total_seconds()
                 task.duration_seconds = duration
                 result_success = True
@@ -289,30 +341,35 @@ def run_task(self, task_id: int, attempt: int = 0, failed_providers: list[str] |
                 resource_id=task.id,
                 details={
                     "workflow_id": task.workflow_id,
-                    "provider": provider_name,
+                    "provider": provider_id,
                     "duration_seconds": task.duration_seconds,
+                    "cost_usd": task.execution_cost_usd,
+                    "tokens_used": task.tokens_used,
+                    "latency_ms": task.execution_latency_ms,
                     "attempt": attempt + 1,
                 },
             )
             
-            logger.info(f"Task {task_id} completed with {provider_name} in {task.duration_seconds}s")
+            logger.info(f"Task {task_id} completed with {provider_id} in {task.duration_seconds}s (cost=${task.execution_cost_usd:.4f})")
             
             return {
                 "status": "completed",
                 "result": task.output_data,
-                "provider": provider_name,
+                "provider": provider_id,
                 "duration_seconds": task.duration_seconds,
+                "cost_usd": task.execution_cost_usd,
+                "tokens_used": task.tokens_used,
             }
         
         except Exception as e:
-            logger.warning(f"Task {task_id}: Provider {provider_name} failed: {str(e)}")
+            logger.warning(f"Task {task_id}: Provider {provider_id} failed: {str(e)}")
             
             # ===== FALLBACK CHAIN =====
             if attempt < max_attempts:
-                failed_providers.append(provider_name)
+                failed_providers.append(provider_id)
                 retry_delay = 60 * (2 ** attempt)  # Exponential backoff
                 
-                logger.info(f"Task {task_id}: Fallback {attempt + 2}/{max_attempts + 1} in {retry_delay}s")
+                logger.info(f"Task {task_id}: Fallback {attempt + 2}/{max_attempts + 1} in {retry_delay}s (failed: {failed_providers})")
                 
                 # Retry with exponential backoff
                 raise self.retry(

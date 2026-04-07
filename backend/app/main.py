@@ -41,6 +41,15 @@ def run_startup_tasks() -> None:
             seed_demo_data(db, force=False, actor="system")
         finally:
             db.close()
+    
+    # Week 2: Bootstrap provider registry with all supported providers
+    try:
+        from .provider_bootstrap import bootstrap_providers
+        bootstrap_providers()
+    except Exception as e:
+        logger.error(f"Provider bootstrap failed: {str(e)}")
+        if settings.app_mode not in ["development", "demo"]:
+            raise  # Fail hard in production if providers can't be initialized
 
 
 @asynccontextmanager

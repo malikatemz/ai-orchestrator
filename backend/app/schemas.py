@@ -24,6 +24,16 @@ class WorkflowCreate(BaseModel):
             Used for task queueing when not specified per-task
         target_model: Default LLM model (gpt-4.1-mini, claude-3-opus, etc.)
             Used for task execution when not specified per-task
+        routing_strategy: Routing strategy for provider selection (cost/latency/accuracy/balanced)
+            cost: Selects cheapest provider
+            latency: Selects fastest provider
+            accuracy: Selects most capable provider
+            balanced: Weighted combination (default)
+        fallback_chain: List of provider IDs to try in order if primary fails
+            Example: ["gpt-4", "gpt-3.5-turbo", "claude-3-sonnet"]
+        cost_threshold: Maximum cost per task in USD (default: 10.0)
+        latency_threshold_ms: Maximum latency in milliseconds (default: 30000)
+        prefer_providers: List of preferred provider IDs (optional)
     
     Validation:
         - name: 3-120 characters, required
@@ -31,6 +41,9 @@ class WorkflowCreate(BaseModel):
         - owner: 2-80 characters, defaults to "operations"
         - priority: Regex enforced (low|medium|high|critical)
         - target_model: 3-80 characters, defaults to "gpt-4.1-mini"
+        - routing_strategy: cost|latency|accuracy|balanced
+        - cost_threshold: positive float, default 10.0
+        - latency_threshold_ms: positive integer, default 30000
     
     Example:
         >>> request = WorkflowCreate(
@@ -38,7 +51,10 @@ class WorkflowCreate(BaseModel):
         ...     description="Summarize incoming emails into concise bullet points",
         ...     owner="user-123",
         ...     priority="high",
-        ...     target_model="gpt-4"
+        ...     target_model="gpt-4",
+        ...     routing_strategy="latency",
+        ...     fallback_chain=["gpt-4", "gpt-3.5-turbo"],
+        ...     cost_threshold=5.0
         ... )
     """
     name: str = Field(min_length=3, max_length=120)
@@ -46,6 +62,13 @@ class WorkflowCreate(BaseModel):
     owner: str = Field(default="operations", min_length=2, max_length=80)
     priority: str = Field(default="medium", pattern="^(low|medium|high|critical)$")
     target_model: str = Field(default="gpt-4.1-mini", min_length=3, max_length=80)
+    
+    # Week 2 Routing Configuration
+    routing_strategy: str = Field(default="balanced", pattern="^(cost|latency|accuracy|balanced)$")
+    fallback_chain: list[str] | None = Field(default=None, description="List of provider IDs to try in order")
+    cost_threshold: float = Field(default=10.0, gt=0)
+    latency_threshold_ms: int = Field(default=30000, gt=0)
+    prefer_providers: list[str] | None = Field(default=None, description="Preferred provider IDs")
 
 
 class TaskCreate(BaseModel):
@@ -129,6 +152,13 @@ class TaskResponse(BaseModel):
     error_message: str | None
     retries: int
     duration_seconds: float | None
+    
+    # Week 2 Provider Execution Info
+    executed_provider: str | None = None
+    execution_cost_usd: float | None = None
+    execution_latency_ms: int | None = None
+    tokens_used: int | None = None
+    
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
@@ -175,6 +205,12 @@ class WorkflowSummary(BaseModel):
     status: str
     priority: str
     target_model: str
+    
+    # Week 2 Routing Configuration
+    routing_strategy: str = "balanced"
+    cost_threshold: float = 10.0
+    latency_threshold_ms: int = 30000
+    
     created_at: datetime
     updated_at: datetime
     last_run_at: datetime | None
