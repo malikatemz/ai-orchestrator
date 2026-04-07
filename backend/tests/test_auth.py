@@ -6,7 +6,7 @@ and complete authentication lifecycle.
 
 import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock, MagicMock
 import jwt
 
 from app.auth import tokens
@@ -107,8 +107,8 @@ class TestTokens:
         assert token is not None
         assert isinstance(token, str)
         
-        # Verify it can be decoded
-        decoded = tokens.decode_token(token)
+        # Verify it can be decoded (with correct token_type)
+        decoded = tokens.decode_token(token, token_type="refresh")
         assert decoded["sub"] == str(test_user.id)
         assert decoded["type"] == "refresh"
     
@@ -139,7 +139,7 @@ class TestTokens:
         refresh_token = tokens.create_refresh_token(test_user)
         
         access_decoded = tokens.decode_token(access_token)
-        refresh_decoded = tokens.decode_token(refresh_token)
+        refresh_decoded = tokens.decode_token(refresh_token, token_type="refresh")
         
         access_expiry = datetime.fromtimestamp(access_decoded["exp"])
         refresh_expiry = datetime.fromtimestamp(refresh_decoded["exp"])
@@ -176,21 +176,25 @@ class TestGoogleOAuth:
             "picture": "https://example.com/photo.jpg"
         }
         
-        with patch("httpx.AsyncClient.post") as mock_post, \
-             patch("httpx.AsyncClient.get") as mock_get:
-            
-            # Mock token response
-            mock_post.return_value.json.return_value = {
-                "access_token": "google_token",
-                "token_type": "Bearer",
-                "expires_in": 3599,
-            }
-            mock_post.return_value.raise_for_status.return_value = None
-            
-            # Mock user info response
-            mock_get.return_value.json.return_value = mock_user_info
-            mock_get.return_value.raise_for_status.return_value = None
-            
+        mock_post_response = AsyncMock()
+        mock_post_response.json.return_value = {
+            "access_token": "google_token",
+            "token_type": "Bearer",
+            "expires_in": 3599,
+        }
+        mock_post_response.raise_for_status.return_value = None
+        
+        mock_get_response = AsyncMock()
+        mock_get_response.json.return_value = mock_user_info
+        mock_get_response.raise_for_status.return_value = None
+        
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_post_response
+        mock_client.get.return_value = mock_get_response
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        
+        with patch("httpx.AsyncClient", return_value=mock_client):
             result = await oauth.exchange_code("test_code")
             assert result is not None
             assert result["email"] == "user@gmail.com"

@@ -20,6 +20,10 @@ def reset_settings():
         "allowed_origins": settings.allowed_origins,
         "public_app_url": settings.public_app_url,
         "public_api_url": settings.public_api_url,
+        "google_client_id": settings.google_client_id,
+        "google_client_secret": settings.google_client_secret,
+        "github_client_id": settings.github_client_id,
+        "github_client_secret": settings.github_client_secret,
     }
     yield
     for key, value in original.items():
@@ -44,6 +48,11 @@ def test_client(tmp_path, monkeypatch) -> Generator[TestClient, None, None]:
     settings.auto_seed_demo = False
     settings.api_token = None
     settings.allowed_origins = "*"
+    # Set test OAuth credentials
+    settings.google_client_id = "test_google_client_id"
+    settings.google_client_secret = "test_google_client_secret"
+    settings.github_client_id = "test_github_client_id"
+    settings.github_client_secret = "test_github_client_secret"
 
     def override_get_db():
         db = session_factory()
