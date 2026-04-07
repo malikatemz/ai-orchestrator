@@ -582,7 +582,23 @@ def create_demo_workflows(db: Session) -> list[models.Workflow]:
     return workflows
 
 
-def create_demo_tasks(db: Session, workflows: List[models.Workflow]) -> None:
+def create_demo_tasks(db: Session, workflows: list[models.Workflow]) -> None:
+    """Create demo tasks for demo workflows.
+    
+    Creates 4 example tasks showing different states:
+    - 1 completed task
+    - 1 failed task (shows error handling)
+    - 1 running task (in progress)
+    - 1 pending task (queued)
+    
+    Args:
+        db: Database session
+        workflows: List of Workflow objects created by create_demo_workflows()
+        
+    Example:
+        >>> workflows = create_demo_workflows(db)
+        >>> create_demo_tasks(db, workflows)
+    """
     now = utc_now()
     tasks = [
         models.Task(
@@ -636,6 +652,20 @@ def create_demo_tasks(db: Session, workflows: List[models.Workflow]) -> None:
 
 
 def seed_demo_data(db: Session, *, force: bool = False, actor: str = SYSTEM_ACTOR) -> None:
+    """Seed database with demo workflows and tasks.
+    
+    Populates demo mode with example data showing platform capabilities.
+    Only runs once unless force=True.
+    
+    Args:
+        db: Database session
+        force: If True, resets existing data before seeding
+        actor: User ID initiating seed (default: 'system')
+        
+    Example:
+        >>> seed_demo_data(db, actor="user-123")
+        >>> # Database now contains demo workflows and tasks
+    """
     if force:
         repositories.reset_workflows_and_tasks(db)
 
@@ -654,6 +684,39 @@ def seed_demo_data(db: Session, *, force: bool = False, actor: str = SYSTEM_ACTO
 
 
 def get_ops_metrics(db: Session) -> dict[str, Any]:
+    """Get comprehensive operational metrics.
+    
+    Returns system-wide metrics for monitoring and debugging:
+    - Workflow and task counts
+    - Task status distribution
+    - Failure analysis (rate, top failing workflows)
+    - Performance data (average duration)
+    - Queue distribution (tasks per lane)
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        Dictionary with metrics:
+        - workflows_total: Total workflow count
+        - tasks_total: Total task count
+        - pending_tasks: Tasks waiting to execute
+        - running_tasks: Tasks currently executing
+        - completed_tasks: Successfully finished tasks
+        - failed_tasks: Tasks that failed
+        - failure_rate: (failed / finished) * 100
+        - average_duration_seconds: Mean execution time
+        - recent_failures: Last 5 failed tasks
+        - top_failing_workflows: 5 workflows with most failures
+        - execution_lanes: Distribution across queues
+        
+    Example:
+        >>> metrics = get_ops_metrics(db)
+        >>> metrics["failure_rate"]
+        5.2
+        >>> len(metrics["top_failing_workflows"])
+        5
+    """
     workflows = repositories.list_workflows(db)
     tasks = repositories.list_all_tasks(db)
     durations = [task.duration_seconds for task in tasks if task.duration_seconds is not None]
