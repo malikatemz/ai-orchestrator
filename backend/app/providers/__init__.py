@@ -43,7 +43,16 @@ from .base import (
 )
 from .registry import ProviderRegistry
 from .credentials import CredentialLoader
-from .executor import execute_task, TaskExecutionError
+
+# Lazy import executor to avoid circular dependency with agents.router
+def __getattr__(name):
+    if name == "execute_task":
+        from .executor import execute_task
+        return execute_task
+    elif name == "TaskExecutionError":
+        from .executor import TaskExecutionError
+        return TaskExecutionError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     # Base classes and types
@@ -61,7 +70,7 @@ __all__ = [
     # Registry and management
     "ProviderRegistry",
     "CredentialLoader",
-    # Execution
+    # Execution (lazy imported)
     "execute_task",
     "TaskExecutionError",
 ]
