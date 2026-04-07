@@ -293,7 +293,31 @@ def calculate_metrics(tasks: list[models.Task]) -> dict[str, Any]:
     }
 
 
-def get_overview(db: Session, user: Dict[str, Any]) -> Dict[str, Any]:
+def get_overview(db: Session, user: dict[str, Any]) -> dict[str, Any]:
+    """Get user's dashboard overview.
+    
+    Aggregates:
+    1. All workflows accessible to user
+    2. Recent tasks (limited to user's accessible workflows)
+    3. Aggregated metrics across all user's tasks
+    
+    Args:
+        db: Database session
+        user: User context
+        
+    Returns:
+        Dictionary with:
+        - workflows: List of accessible Workflow objects
+        - recent_tasks: Last 8 recent tasks (from last 24)
+        - metrics: Aggregated metrics from calculate_metrics()
+        
+    Example:
+        >>> overview = get_overview(db, user)
+        >>> len(overview["workflows"])
+        3
+        >>> overview["metrics"]["success_rate"]
+        92.5
+    """
     workflows = get_accessible_workflows(db, user)
     workflow_ids = {workflow.id for workflow in workflows}
     recent_tasks = [task for task in repositories.list_recent_tasks(db, limit=24) if task.workflow_id in workflow_ids][:8]
@@ -316,8 +340,34 @@ def record_audit_event(
     event: str,
     resource_type: str,
     resource_id: int | None = None,
-    details: dict | None = None,
+    details: dict[str, Any] | None = None,
 ) -> models.AuditLog:
+    """Record an audit log entry.
+    
+    Creates an immutable audit trail for compliance and debugging.
+    All significant operations should call this function.
+    
+    Args:
+        db: Database session
+        actor: User ID or service performing action
+        event: Event type (e.g., 'task_created', 'workflow_deleted')
+        resource_type: Type of resource affected (e.g., 'task', 'workflow')
+        resource_id: ID of affected resource (optional)
+        details: Additional context dictionary (merged with audit record)
+        
+    Returns:
+        AuditLog record created in database
+        
+    Example:
+        >>> record_audit_event(
+        ...     db,
+        ...     actor="user-123",
+        ...     event="workflow_executed",
+        ...     resource_type="workflow",
+        ...     resource_id=1,
+        ...     details={"priority": "high"}
+        ... )
+    """
     return repositories.create_audit_log(
         db,
         actor=actor,

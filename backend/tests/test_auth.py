@@ -31,6 +31,7 @@ def test_user(test_db):
     test_db.commit()
     
     user = User(
+        id=str(uuid.uuid4()),
         email="user@example.com",
         full_name="Test User",
         hashed_password="hashed_pw",
@@ -59,6 +60,7 @@ def admin_user(test_db):
     test_db.commit()
     
     user = User(
+        id=str(uuid.uuid4()),
         email="admin@example.com",
         full_name="Admin User",
         hashed_password="hashed_pw",
