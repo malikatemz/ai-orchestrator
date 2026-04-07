@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from app.models import Task, Organization, UsageRecord
 from app.time_utils import utc_now
 from app.database import SessionLocal
-from backend.workers.phase4_tasks import (
-    execute_task_from_queue,
+from app.worker import (
+    execute_task,
     report_usage_to_stripe,
     cleanup_old_tasks,
 )
