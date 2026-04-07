@@ -422,7 +422,70 @@ class Organization(Base):
 
 
 class UsageRecord(Base):
-    """API usage tracking for billing"""
+    """API usage tracking for billing and metering.
+    
+    Records individual usage events for usage-based billing and analytics. Each event represents
+    a billable action (task execution, API call, LLM token usage) attributed to an organization.
+    Usage records feed into Stripe's metering API for real-time billing and cost transparency.
+    
+    Usage Types:
+        task_execution: Successful task completion (primary billable event)
+        api_call: REST API endpoint invocation
+        token_usage: LLM token consumption (separate metering for fine-grained billing)
+        retry: Task retry attempt (may have separate pricing)
+        timeout: Request timeout (may not be billable depending on plan)
+        failure: Task failure (may not be billable)
+    
+    Attributes:
+        id: Primary key (auto-increment)
+        org_id: Foreign key to Organization (not nullable, indexed)
+        task_id: Optional reference to Task (nullable, indexed)
+            Links usage to originating task for correlation/debugging
+        usage_type: Event category (task_execution, api_call, token_usage, etc.)
+            Used for filtering and segmented reporting
+        quantity: Numeric value for usage (count, token count, seconds, etc.)
+            Default 1 for simple events, can be higher for token counts or duration
+        metadata_json: JSON object with event-specific context (max 5KB per event)
+            Examples:
+            - {model: "gpt-4", tokens: 2500, cost_usd: 0.15}
+            - {endpoint: "/workflows/123/tasks", status_code: 201}
+            - {provider: "openai", latency_ms: 1250, retry_count: 2}
+        created_at: Event timestamp (UTC, indexed for time-series analysis)
+    
+    Relationships:
+        organization: Back-reference to parent Organization (many-to-one)
+            Inverse: Organization.usage_records
+    
+    Indexes:
+        - org_id: Fast lookup of organization's usage
+        - task_id: Lookup usage from specific task
+        - usage_type: Filter by event category
+        - created_at (indexed): Time-series queries, daily aggregations
+        - (org_id, created_at): Composite index for "org's daily usage"
+    
+    Properties:
+        meta: Parsed JSON dictionary of event metadata.
+            Returns {} on JSON parse error (gracefully handles corruption).
+    
+    Example:
+        >>> usage = UsageRecord(
+        ...     org_id="org-abc123",
+        ...     task_id=42,
+        ...     usage_type="task_execution",
+        ...     quantity=1,
+        ...     metadata_json='{"model": "gpt-4", "tokens": 2500, "cost_usd": 0.15}'
+        ... )
+        >>> session.add(usage)
+        >>> session.commit()
+        >>> # Query: organization's daily usage
+        >>> today_usage = session.query(UsageRecord).filter(
+        ...     (UsageRecord.org_id == "org-abc123") &
+        ...     (UsageRecord.created_at >= datetime.today())
+        ... ).all()
+        >>> total_quantity = sum(u.quantity for u in today_usage)
+        >>> # Query: get cost metadata
+        >>> usage.meta  # {"model": "gpt-4", "tokens": 2500, "cost_usd": 0.15}
+    """
     __tablename__ = "usage_records"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -437,30 +500,99 @@ class UsageRecord(Base):
 
     @property
     def meta(self) -> dict:
-        """Parse metadata JSON string into dictionary"""
+        """Parse metadata_json string into a Python dictionary.
+        
+        Returns:
+            Parsed JSON as dict. Returns empty {} if JSON is malformed or null.
+            Never raises JSONDecodeError (gracefully handles corrupted data).
+        
+        Example:
+            >>> record = session.query(UsageRecord).first()
+            >>> record.meta  # {"model": "gpt-4", "tokens": 2500, "cost_usd": 0.15}
+            >>> record.meta.get("cost_usd", 0)
+            0.15
+        """
         try:
             return json.loads(self.metadata_json or "{}")
         except json.JSONDecodeError:
             return {}
 
 
-def count_records(db: Session, model) -> int:
+def count_records(db: Session, model: type) -> int:
+    """Count total records of a model type in the database.
+    
+    Args:
+        db: SQLAlchemy session for database queries
+        model: SQLAlchemy model class (e.g., User, Workflow, Task)
+    
+    Returns:
+        Count of all records of the model type
+    
+    Example:
+        >>> db = SessionLocal()
+        >>> user_count = count_records(db, User)
+        >>> print(user_count)
+        42
+    """
     return db.query(model).count()
 
 
 def build_engine(database_url: str):
+    """Create SQLAlchemy engine for database connections.
+    
+    Args:
+        database_url: Database connection string (PostgreSQL, SQLite, etc.)
+    
+    Returns:
+        SQLAlchemy Engine instance configured for connection pooling
+    
+    Example:
+        >>> engine = build_engine("postgresql://user:pass@localhost/aiorch")
+    """
     from .database import build_engine as database_build_engine
 
     return database_build_engine(database_url)
 
 
 def build_session_factory(engine):
+    """Create SQLAlchemy session factory (sessionmaker).
+    
+    Args:
+        engine: SQLAlchemy Engine instance
+    
+    Returns:
+        sessionmaker instance for creating new database sessions
+    
+    Example:
+        >>> Session = build_session_factory(engine)
+        >>> db = Session()
+        >>> users = db.query(User).all()
+    """
     from .database import build_session
 
     return build_session(engine)
 
 
 def init_db(engine_override=None):
+    """Initialize database schema by creating all tables.
+    
+    Idempotent: safe to call multiple times. Creates tables only if they don't exist.
+    Called at application startup to ensure schema is ready.
+    
+    Args:
+        engine_override: Optional SQLAlchemy Engine to use instead of default.
+            Useful for testing with in-memory SQLite or separate test database.
+    
+    Returns:
+        None
+    
+    Example:
+        >>> # Initialize at application startup
+        >>> init_db()
+        >>> # Or with custom engine for testing
+        >>> test_engine = create_engine("sqlite:///:memory:")
+        >>> init_db(engine_override=test_engine)
+    """
     from .database import init_db as database_init_db
 
     return database_init_db(engine_override)
